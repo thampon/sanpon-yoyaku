@@ -101,6 +101,20 @@
   const DAYS_PER_PAGE = 10;
   let view = null, gymId = null, slots = [], shown = DAYS_PER_PAGE, picked = null, busy = false;
   let slotsByGym = {}, slotsAllP = null; // ページを開いた瞬間に全ジムの空き枠を裏で取りにいく
+  let groups = [], groupKey = null; // 「南青山 / 六本木」のように複数ジムを1つのボタンにまとめたもの
+  // ジム一覧 → ボタン一覧（まとめボタンが同じジムは1つにまとめる。並びは最初のジムの位置）
+  function buildGroups(gyms) {
+    const out = [], byKey = {};
+    gyms.forEach((g) => {
+      const key = g.group ? 'grp:' + g.group : g.id;
+      if (!byKey[key]) { byKey[key] = { key, label: g.group || g.name, gyms: [] }; out.push(byKey[key]); }
+      byKey[key].gyms.push(g);
+    });
+    out.forEach((x) => { if (x.gyms.length === 1) x.label = x.gyms[0].name; });
+    return out;
+  }
+  const curGroup = () => groups.find((x) => x.key === groupKey);
+  const gymName = (id) => { const g = view.gyms.find((x) => x.id === id); return g ? g.name : ''; };
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -124,10 +138,12 @@
     slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
     try {
       view = await call('apiCustomerView', TOKEN);
-      gymId = view.gyms.length === 1 ? view.gyms[0].id : null;
+      groups = buildGroups(view.gyms);
+      groupKey = groups.length === 1 ? groups[0].key : null;
+      gymId = null;
       slots = []; shown = DAYS_PER_PAGE;
       render();
-      if (gymId && view.bookable > 0) loadSlots();
+      if (groupKey && view.bookable > 0) loadSlots();
     } catch (e) {
       $('app').innerHTML = '<div class="err">' + esc(e) + '</div>';
     }
@@ -164,8 +180,8 @@
       h += '<div class="note">ご利用できるジムが設定されていません。トレーナーにお問い合わせください。</div>';
     } else {
       h += '<div class="muted" style="margin-bottom:8px">ジムを選んでください（' + v.leadDays + '日後以降の枠から選べます）</div><div class="gyms">';
-      v.gyms.forEach((g) => {
-        h += '<button class="gym' + (g.id === gymId ? ' on' : '') + '" data-gym="' + esc(g.id) + '">' + esc(g.name) + '</button>';
+      groups.forEach((g) => {
+        h += '<button class="gym' + (g.key === groupKey ? ' on' : '') + '" data-gym="' + esc(g.key) + '">' + esc(g.label) + '</button>';
       });
       h += '</div><div id="slots"></div>';
     }
@@ -173,7 +189,7 @@
     $('app').innerHTML = h;
 
     document.querySelectorAll('[data-gym]').forEach((el) => el.addEventListener('click', () => {
-      gymId = el.getAttribute('data-gym');
+      groupKey = el.getAttribute('data-gym'); gymId = null;
       document.querySelectorAll('[data-gym]').forEach((x) => x.classList.toggle('on', x === el));
       picked = null; hideBar(); shown = DAYS_PER_PAGE; dayIdx = 0;
       loadSlots();
@@ -184,13 +200,15 @@
     const box = $('slots');
     if (!box) return;
     box.innerHTML = '<div class="spinner"></div>';
-    const requested = gymId;
+    const requested = groupKey;
+    const grp = curGroup();
     try {
-      let res = slotsByGym[requested];
-      if (!res && slotsAllP) { await slotsAllP; res = slotsByGym[requested]; }
-      if (!res) res = await call('apiSlots', TOKEN, requested);
-      if (requested !== gymId) return; // 途中でジムを切り替えた
-      slots = res;
+      if (!grp) return;
+      const ids = grp.gyms.map((g) => g.id);
+      if (ids.some((id) => !slotsByGym[id]) && slotsAllP) await slotsAllP;
+      for (const id of ids) if (!slotsByGym[id]) slotsByGym[id] = await call('apiSlots', TOKEN, id);
+      if (requested !== groupKey) return; // 途中でボタンを切り替えた
+      slots = mergeSlots(ids.map((id) => [id, slotsByGym[id] || []]));
       renderSlots();
     } catch (e) {
       box.innerHTML = '<div class="err">' + esc(e) + '</div>';
@@ -223,7 +241,8 @@
       h += '<div class="band"><div class="bt">' + name + '</div><div class="times">';
       ts.forEach((t) => {
         const on = picked && picked.start === t.start;
-        h += '<button class="time' + (on ? ' on' : '') + '" data-start="' + esc(t.start) + '" data-day="' + esc(d.label) + '" data-label="' + esc(t.label) + '">' + esc(t.label) + '</button>';
+        const gs = (t.gyms || []).join(',');
+        h += '<button class="time' + (on ? ' on' : '') + '" data-start="' + esc(t.start) + '" data-day="' + esc(d.label) + '" data-label="' + esc(t.label) + '" data-gyms="' + esc(gs) + '">' + esc(t.label) + '</button>';
       });
       h += '</div></div>';
     });
@@ -237,18 +256,52 @@
       $('dates').scrollLeft = x;
     }));
     box.querySelectorAll('[data-start]').forEach((el) => el.addEventListener('click', () => {
-      picked = { start: el.getAttribute('data-start'), day: el.getAttribute('data-day'), label: el.getAttribute('data-label') };
+      picked = { start: el.getAttribute('data-start'), day: el.getAttribute('data-day'), label: el.getAttribute('data-label'),
+        gyms: (el.getAttribute('data-gyms') || '').split(',').filter(Boolean) };
       box.querySelectorAll('[data-start]').forEach((x) => x.classList.toggle('on', x === el));
-      const g = view.gyms.find((x) => x.id === gymId);
-      $('selText').textContent = picked.day + ' ' + picked.label + '〜（' + (g ? g.name : '') + '）';
+      // その時間に空いている場所が1つなら自動で決定、複数なら場所を選んでもらう
+      gymId = picked.gyms.length === 1 ? picked.gyms[0] : null;
+      renderBar();
       $('bar').classList.add('show');
     }));
   }
 
   function hideBar() { $('bar').classList.remove('show'); }
 
+  // 複数ジムの空き枠を1つにまとめる（時間ごとに「どのジムなら空いているか」を持たせる）
+  function mergeSlots(list) {
+    const days = {}, order = [];
+    list.forEach(([id, ds]) => ds.forEach((d) => {
+      if (!days[d.label]) { days[d.label] = { label: d.label, times: {}, first: d.times.length ? d.times[0].start : '' }; order.push(d.label); }
+      d.times.forEach((t) => {
+        const x = days[d.label].times[t.start] || (days[d.label].times[t.start] = { start: t.start, label: t.label, gyms: [] });
+        x.gyms.push(id);
+      });
+    }));
+    return order.map((k) => days[k])
+      .map((d) => ({ label: d.label, times: Object.values(d.times).sort((a, b) => a.start < b.start ? -1 : 1) }))
+      .filter((d) => d.times.length)
+      .sort((a, b) => a.times[0].start < b.times[0].start ? -1 : 1);
+  }
+
+  // 下のバー：選んだ日時と、場所が複数あるときは場所ボタン
+  function renderBar() {
+    if (!picked) return;
+    let place = $('placePick');
+    if (!place) {
+      place = document.createElement('div'); place.id = 'placePick'; place.className = 'gyms'; place.style.margin = '0 0 10px';
+      $('reqBtn').parentNode.insertBefore(place, $('reqBtn'));
+    }
+    const multi = picked.gyms.length > 1;
+    $('selText').textContent = picked.day + ' ' + picked.label + '〜' + (gymId ? '（' + gymName(gymId) + '）' : '｜場所を選んでください');
+    place.innerHTML = multi ? picked.gyms.map((id) =>
+      '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + '</button>').join('') : '';
+    place.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { gymId = b.getAttribute('data-place'); renderBar(); }));
+    $('reqBtn').disabled = !gymId;
+  }
+
   $('reqBtn').addEventListener('click', async () => {
-    if (!picked || busy) return;
+    if (!picked || !gymId || busy) return;
     busy = true; $('reqBtn').disabled = true; $('reqBtn').textContent = '送信中…';
     try {
       const r = await call('apiRequest', TOKEN, gymId, picked.start);
@@ -268,6 +321,7 @@
       if (box) box.insertAdjacentHTML('afterbegin', '<div class="err">' + esc(e) + '</div>');
     } finally {
       busy = false; $('reqBtn').disabled = false; $('reqBtn').textContent = 'この日時で仮予約する';
+      if (picked) renderBar();
     }
   });
 
