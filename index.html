@@ -100,6 +100,7 @@
   const TOKEN = new URLSearchParams(location.search).get('t') || '';
   const DAYS_PER_PAGE = 10;
   let view = null, gymId = null, slots = [], shown = DAYS_PER_PAGE, picked = null, busy = false;
+  let slotsByGym = {}, slotsAllP = null; // ページを開いた瞬間に全ジムの空き枠を裏で取りにいく
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -118,6 +119,9 @@
   async function load() {
     $('app').innerHTML = '<div class="spinner"></div>';
     hideBar();
+    slotsByGym = {};
+    // 予約状況と空き枠を同時に取りにいく（順番に待つと遅いので）
+    slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
     try {
       view = await call('apiCustomerView', TOKEN);
       gymId = view.gyms.length === 1 ? view.gyms[0].id : null;
@@ -182,7 +186,9 @@
     box.innerHTML = '<div class="spinner"></div>';
     const requested = gymId;
     try {
-      const res = await call('apiSlots', TOKEN, requested);
+      let res = slotsByGym[requested];
+      if (!res && slotsAllP) { await slotsAllP; res = slotsByGym[requested]; }
+      if (!res) res = await call('apiSlots', TOKEN, requested);
       if (requested !== gymId) return; // 途中でジムを切り替えた
       slots = res;
       renderSlots();
@@ -256,6 +262,7 @@
     } catch (e) {
       hideBar();
       picked = null;
+      slotsByGym = {}; slotsAllP = null; // 埋まっていた枠があるので最新を取り直す
       await loadSlots();
       const box = $('slots');
       if (box) box.insertAdjacentHTML('afterbegin', '<div class="err">' + esc(e) + '</div>');
