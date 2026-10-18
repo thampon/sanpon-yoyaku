@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>予約管理｜さんぽんパーソナル</title>
+<style>
+  :root {
+    --green: #2c5f2d; --green-d: #1f4520; --bg: #f5f7f1; --card: #fff; --ink: #1d261d; --sub: #5b6658;
+    --line: #dde4d6; --warn: #b4542b; --pending: #a07a14;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+    font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  header { background: var(--green); color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+  header b { letter-spacing: .04em; }
+  header button { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 16px 48px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 12px; overflow-x: auto; }
+  .tab { background: none; border: 0; padding: 10px 14px; font-size: 14px; font-weight: 700; color: var(--sub); cursor: pointer;
+    border-bottom: 2.5px solid transparent; white-space: nowrap; }
+  .tab.on { color: var(--green); border-bottom-color: var(--green); }
+  .badge { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn); color: #fff;
+    font-size: 12px; text-align: center; margin-left: 4px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  .title { font-weight: 700; font-size: 15px; }
+  .muted { color: var(--sub); font-size: 13px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .btn { border: 0; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--green); color: #fff; }
+  .btn.sub { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .warn { background: #fdf0eb; border: 1px solid #f1c9b8; color: #7d3417; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .warn ul { margin: 4px 0 0; padding-left: 18px; }
+  .empty { color: var(--sub); text-align: center; padding: 32px 0; }
+  .num { font-size: 22px; font-weight: 700; color: var(--green); line-height: 1; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--sub); font-weight: 700; background: #f9fbf6; }
+  td.n { font-variant-numeric: tabular-nums; font-weight: 700; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #1d261d; color: #fff; padding: 12px 18px;
+    border-radius: 10px; font-size: 14px; max-width: 92vw; box-shadow: 0 6px 24px rgba(0,0,0,.2); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(20,30,20,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+  .modal { background: #fff; border-radius: 14px; padding: 18px; width: 100%; max-width: 420px; }
+  .modal h3 { margin: 0 0 8px; font-size: 16px; }
+  .modal input, .modal textarea { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; font-family: inherit; }
+  .modal .actions { justify-content: flex-end; }
+  .spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; margin: 32px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+  @media (max-width: 560px) { .hide-sm { display: none; } }
+</style>
+</head>
+<body>
+<header><b>さんぽんパーソナル｜予約管理</b><button id="reload">更新</button></header>
+<main>
+  <div id="setupWarn"></div>
+  <div class="tabs">
+    <button class="tab on" data-tab="pending">承認待ち<span id="pendBadge"></span></button>
+    <button class="tab" data-tab="upcoming">確定予約</button>
+    <button class="tab" data-tab="customers">顧客・回数券</button>
+  </div>
+  <div id="warnings"></div>
+  <div id="content"><div class="spinner"></div></div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+  const ADMIN = new URLSearchParams(location.search).get('admin') || '';
+  let data = null, tab = 'pending', working = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const API_URL = "https://script.google.com/macros/s/AKfycbyn8BzGeSM6x5tSeIhi0vAlIhX7n8NpY-u_GSXo5exqINmJa_U9Nwe08gIJjlUDPg-M/exec";
+  const call = async (fn, ...args) => {
+    let r;
+    try {
+      r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit' });
+    } catch (e) { throw '通信できませんでした。電波の良いところでもう一度お試しください。'; }
+    const j = await r.json().catch(() => null);
+    if (!j) throw 'エラーが発生しました。時間をおいて再度お試しください。';
+    if (!j.ok) throw j.error;
+    return j.result;
+  };
+
+  function toast(msg, ms) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms || 4500);
+  }
+
+  /** シンプルな確認・入力ダイアログ。buttons: [{label, value, kind}] / input: {placeholder, multiline, value} */
+  function ask(opts) {
+    return new Promise((resolve) => {
+      const bg = document.createElement('div');
+      bg.className = 'modal-bg';
+      let inner = '<div class="modal"><h3>' + esc(opts.title) + '</h3>';
+      if (opts.body) inner += '<div class="muted">' + opts.body + '</div>';
+      if (opts.input) {
+        inner += opts.input.multiline
+          ? '<textarea id="askIn" rows="3" placeholder="' + esc(opts.input.placeholder || '') + '">' + esc(opts.input.value || '') + '</textarea>'
+          : '<input id="askIn" placeholder="' + esc(opts.input.placeholder || '') + '" value="' + esc(opts.input.value || '') + '"' + (opts.input.readonly ? ' readonly' : '') + '>';
+      }
+      inner += '<div class="actions"><button class="btn sub" data-v="__cancel">閉じる</button>';
+      (opts.buttons || []).forEach((b, i) => {
+        inner += '<button class="btn ' + (b.kind || '') + '" data-i="' + i + '">' + esc(b.label) + '</button>';
+      });
+      inner += '</div></div>';
+      bg.innerHTML = inner;
+      document.body.appendChild(bg);
+      const input = bg.querySelector('#askIn');
+      if (input) { input.focus(); if (opts.input.readonly) input.select(); }
+      bg.addEventListener('click', (ev) => {
+        const el = ev.target.closest('button');
+        if (ev.target === bg || (el && el.dataset.v === '__cancel')) { bg.remove(); resolve(null); return; }
+        if (el && el.dataset.i !== undefined) {
+          const b = opts.buttons[Number(el.dataset.i)];
+          bg.remove();
+          resolve({ value: b.value, text: input ? input.value : '' });
+        }
+      });
+    });
+  }
+
+  async function load() {
+    $('content').innerHTML = '<div class="spinner"></div>';
+    try {
+      data = await call('apiAdminView', ADMIN);
+      render();
+    } catch (e) {
+      $('content').innerHTML = '<div class="warn">' + esc(e) + '</div>';
+    }
+  }
+
+  function render() {
+    const p = data.pending.length;
+    $('pendBadge').innerHTML = p ? '<span class="badge">' + p + '</span>' : '';
+    const sw = [];
+    if (!data.slackReady.user) sw.push('SLACK_USER_TOKEN が未設定のため、お客さんへのSlack連絡が送られません。');
+    if (!data.slackReady.webhook) sw.push('SLACK_WEBHOOK_URL が未設定のため、仮予約の通知が届きません。');
+    $('setupWarn').innerHTML = sw.length ? '<div class="warn"><b>設定が残っています</b><ul><li>' + sw.map(esc).join('</li><li>') + '</li></ul></div>' : '';
+    $('warnings').innerHTML = data.warnings.length
+      ? '<div class="warn"><b>カレンダーとのズレ・要対応</b><ul><li>' + data.warnings.map(esc).join('</li><li>') + '</li></ul></div>' : '';
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
+    if (tab === 'pending') renderPending();
+    else if (tab === 'upcoming') renderUpcoming();
+    else renderCustomers();
+  }
+
+  function bookingCard(b, buttons) {
+    return '<div class="card"><div class="row"><div>' +
+      '<div class="title">' + esc(b.date) + ' ' + esc(b.time) + '</div>' +
+      '<div>' + esc(b.name) + 'さん｜' + esc(b.gym) + '</div>' +
+      '<div class="muted">' + (b.requestedAt ? '申請 ' + esc(b.requestedAt) + '｜' : '') + '残回数 ' + esc(b.remaining) + '回' + (b.past ? '｜<b style="color:var(--warn)">日時を過ぎています</b>' : '') + '</div>' +
+      '</div></div><div class="actions">' + buttons + '</div></div>';
+  }
+
+  function renderPending() {
+    if (!data.pending.length) { $('content').innerHTML = '<div class="empty">承認待ちの仮予約はありません。</div>'; return; }
+    $('content').innerHTML = '<p class="muted">ジムを押さえてから「承認」を押してください。承認すると回数券が1回減り、お客さんにSlackで確定連絡が届きます。</p>' +
+      data.pending.map((b) => bookingCard(b,
+        '<button class="btn" data-act="approve" data-id="' + esc(b.id) + '">承認する</button>' +
+        '<button class="btn danger" data-act="reject" data-id="' + esc(b.id) + '">却下する</button>')).join('');
+  }
+
+  function renderUpcoming() {
+    if (!data.upcoming.length) { $('content').innerHTML = '<div class="empty">確定済みの予約はありません。</div>'; return; }
+    $('content').innerHTML = data.upcoming.map((b) => bookingCard(b,
+      '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセルする</button>')).join('');
+  }
+
+  function renderCustomers() {
+    const rows = data.customers.map((c) =>
+      '<tr><td><b>' + esc(c.name) + '</b>' + (c.active ? '' : ' <span class="muted">（無効）</span>') +
+      '<div class="muted">' + esc(c.gyms || 'ジム未設定') + (c.hasSlack ? '' : '｜Slack未設定') + '</div></td>' +
+      '<td class="n">' + esc(c.remaining) + '回<div class="muted" style="font-weight:400">承認待ち ' + esc(c.pending) + '</div></td>' +
+      '<td><div class="actions" style="margin-top:0">' +
+      '<button class="btn sub" data-act="tickets" data-id="' + esc(c.id) + '">回数を追加</button>' +
+      '<button class="btn sub" data-act="url" data-id="' + esc(c.id) + '">' + (c.hasUrl ? 'URL再発行' : 'URL発行') + '</button>' +
+      '</div></td></tr>').join('');
+    $('content').innerHTML = data.customers.length
+      ? '<table><thead><tr><th>顧客</th><th>残回数</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+        '<p class="muted">顧客の追加・利用ジム・SlackチャンネルIDの変更は、スプレッドシートの「顧客」シートで行います。</p>'
+      : '<div class="empty">「顧客」シートに顧客を登録してください。</div>';
+  }
+
+  async function run(fn, ...args) {
+    if (working) return;
+    working = true;
+    document.querySelectorAll('[data-act]').forEach((b) => (b.disabled = true));
+    try {
+      const msg = await call(fn, ADMIN, ...args);
+      toast(msg, 6000);
+      await load();
+    } catch (e) {
+      toast('⚠ ' + e, 7000);
+      document.querySelectorAll('[data-act]').forEach((b) => (b.disabled = false));
+    } finally {
+      working = false;
+    }
+  }
+
+  const find = (list, id) => list.find((x) => x.id === id);
+
+  document.addEventListener('click', async (ev) => {
+    const tabEl = ev.target.closest('.tab');
+    if (tabEl) { tab = tabEl.dataset.tab; render(); return; }
+    const el = ev.target.closest('[data-act]');
+    if (!el || working) return;
+    const id = el.dataset.id, act = el.dataset.act;
+
+    if (act === 'approve') {
+      const b = find(data.pending, id);
+      const r = await ask({ title: '承認しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>ジムは押さえましたか？',
+        buttons: [{ label: '承認する', value: 1 }] });
+      if (r) run('apiApprove', id);
+    } else if (act === 'reject') {
+      const b = find(data.pending, id);
+      const r = await ask({ title: '却下しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '<br>理由はお客さんへのメッセージに入ります（空欄でもOK）。',
+        input: { placeholder: '例：その時間はジムが満室でした', multiline: true }, buttons: [{ label: '却下する', value: 1, kind: 'danger' }] });
+      if (r) run('apiReject', id, r.text);
+    } else if (act === 'cancel') {
+      const b = find(data.upcoming, id);
+      const r = await ask({ title: 'キャンセルしますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>回数券を戻すかどうかを選んでください。',
+        buttons: [{ label: '消化扱い', value: 'keep', kind: 'danger' }, { label: '回数を戻す', value: 'refund' }] });
+      if (r) run('apiCancel', id, r.value === 'refund');
+    } else if (act === 'tickets') {
+      const c = find(data.customers, id);
+      const r = await ask({ title: c.name + 'さんの回数を追加', body: '現在の残回数：' + esc(c.remaining) + '回。減らすときはマイナスで入力（例：-1）。',
+        input: { placeholder: '例：4' }, buttons: [{ label: '反映する', value: 1 }] });
+      if (r) {
+        const n = Number(String(r.text).replace(/[０-９－]/g, (s) => s === '－' ? '-' : String.fromCharCode(s.charCodeAt(0) - 0xFEE0)));
+        if (!n || Math.floor(n) !== n) { toast('⚠ 0以外の整数を入力してください'); return; }
+        run('apiAddTickets', id, n, n > 0 ? '付与' : '補正');
+      }
+    } else if (act === 'url') {
+      const c = find(data.customers, id);
+      const r = await ask({ title: c.name + 'さんの予約URLを' + (c.hasUrl ? '再発行' : '発行'),
+        body: c.hasUrl ? '再発行すると、今のURLは使えなくなります。' : '発行したURLをSlackでお客さんに送ってください。',
+        buttons: [{ label: c.hasUrl ? '再発行する' : '発行する', value: 1 }] });
+      if (!r) return;
+      try {
+        working = true;
+        const url = await call('apiIssueUrl', ADMIN, id);
+        working = false;
+        try { await navigator.clipboard.writeText(url); toast('URLをコピーしました'); } catch (e) { /* iframe内では失敗することあり */ }
+        await ask({ title: c.name + 'さんの予約URL', body: '長押し（右クリック）でコピーして、Slackで送ってください。', input: { value: url, readonly: true }, buttons: [] });
+        load();
+      } catch (e) { working = false; toast('⚠ ' + e); }
+    }
+  });
+
+  $('reload').addEventListener('click', load);
+  load();
+</script>
+</body>
+</html>

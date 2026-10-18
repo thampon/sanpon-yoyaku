@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ご予約｜さんぽんパーソナル</title>
+<script>if (new URLSearchParams(location.search).get('admin')) location.replace('admin.html' + location.search);</script>
+<style>
+  :root {
+    --green: #2c5f2d; --green-d: #1f4520; --moss: #97bc62; --bg: #f5f7f1; --card: #ffffff;
+    --ink: #1d261d; --sub: #5b6658; --line: #dde4d6; --warn: #b4542b; --pending: #a07a14;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+    font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  header { background: var(--green); color: #fff; padding: 14px 16px; }
+  header .brand { font-weight: 700; letter-spacing: .04em; font-size: 15px; }
+  header .sub { font-size: 12px; opacity: .8; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 16px 120px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .hello { font-size: 16px; font-weight: 700; margin: 4px 0 12px; }
+  .count { display: flex; align-items: baseline; gap: 6px; }
+  .count .num { font-size: 40px; font-weight: 700; color: var(--green); line-height: 1; }
+  .count .unit { font-weight: 700; }
+  .muted { color: var(--sub); font-size: 13px; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .list li:last-child { border-bottom: 0; }
+  .pill { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; }
+  .pill.ok { background: #e3efd6; color: var(--green-d); }
+  .pill.wait { background: #fbf0d3; color: var(--pending); }
+  .gyms { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gym { border: 1.5px solid var(--line); background: #fff; border-radius: 10px; padding: 10px 14px;
+    font-size: 14px; font-weight: 700; color: var(--ink); cursor: pointer; }
+  .gym.on { border-color: var(--green); background: #eaf2e1; color: var(--green-d); }
+  .day { margin-top: 16px; }
+  .day .label { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .day .label.sat { color: #2d5a8a; } .day .label.sun { color: #a23b3b; }
+  .times { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .time { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 8px 0; text-align: center;
+    font-size: 14px; cursor: pointer; font-variant-numeric: tabular-nums; }
+  .time.on { background: var(--green); border-color: var(--green); color: #fff; font-weight: 700; }
+  .more { width: 100%; margin-top: 16px; background: none; border: 1px dashed var(--line); border-radius: 10px;
+    padding: 12px; color: var(--sub); font-size: 14px; cursor: pointer; }
+  .note { background: #fff8ec; border: 1px solid #f0dfbd; color: #6d5316; border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+  .err { background: #fdf0eb; border: 1px solid #f1c9b8; color: var(--warn); border-radius: 10px; padding: 12px 14px; font-size: 14px; margin-top: 12px; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line);
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 16px rgba(0,0,0,.06);
+    transform: translateY(110%); transition: transform .2s; }
+  .bar.show { transform: none; }
+  .bar .inner { max-width: 560px; margin: 0 auto; }
+  .bar .sel { font-weight: 700; margin-bottom: 8px; }
+  .btn { width: 100%; border: 0; border-radius: 10px; padding: 14px; font-size: 16px; font-weight: 700; cursor: pointer;
+    background: var(--green); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.ghost { background: #fff; color: var(--green); border: 1.5px solid var(--green); margin-top: 12px; }
+  .spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--green); border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 24px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .done { text-align: center; padding: 32px 8px; }
+  .done .check { width: 56px; height: 56px; border-radius: 50%; background: #e3efd6; color: var(--green); font-size: 30px;
+    line-height: 56px; margin: 0 auto 12px; font-weight: 700; }
+  .dates { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 10px; margin-top: 16px; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+  .date { flex: 0 0 auto; width: 68px; border: 1.5px solid var(--line); background: #fff; border-radius: 12px; padding: 8px 0; text-align: center; cursor: pointer; scroll-snap-align: start; color: var(--ink); }
+  .date .md { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .date .dw { font-size: 12px; }
+  .date .n { font-size: 11px; color: var(--sub); margin-top: 2px; }
+  .date.sat .dw { color: #2d5a8a; } .date.sun .dw { color: #a23b3b; }
+  .date.on { border-color: var(--green); background: var(--green); color: #fff; }
+  .date.on .dw, .date.on .n { color: #fff; }
+  .band { margin-top: 14px; }
+  .band .bt { font-size: 13px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
+  .hint { font-size: 12px; color: var(--sub); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">さんぽんパーソナル</div>
+  <div class="sub">セッションのご予約</div>
+</header>
+
+<main id="app">
+  <div class="spinner"></div>
+</main>
+
+<div class="bar" id="bar">
+  <div class="inner">
+    <div class="sel" id="selText"></div>
+    <button class="btn" id="reqBtn">この日時で仮予約する</button>
+  </div>
+</div>
+
+<script>
+  const TOKEN = new URLSearchParams(location.search).get('t') || '';
+  const DAYS_PER_PAGE = 10;
+  let view = null, gymId = null, slots = [], shown = DAYS_PER_PAGE, picked = null, busy = false;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const API_URL = "https://script.google.com/macros/s/AKfycbyn8BzGeSM6x5tSeIhi0vAlIhX7n8NpY-u_GSXo5exqINmJa_U9Nwe08gIJjlUDPg-M/exec";
+  const call = async (fn, ...args) => {
+    let r;
+    try {
+      r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit' });
+    } catch (e) { throw '通信できませんでした。電波の良いところでもう一度お試しください。'; }
+    const j = await r.json().catch(() => null);
+    if (!j) throw 'エラーが発生しました。時間をおいて再度お試しください。';
+    if (!j.ok) throw j.error;
+    return j.result;
+  };
+
+  async function load() {
+    $('app').innerHTML = '<div class="spinner"></div>';
+    hideBar();
+    try {
+      view = await call('apiCustomerView', TOKEN);
+      gymId = view.gyms.length === 1 ? view.gyms[0].id : null;
+      slots = []; shown = DAYS_PER_PAGE;
+      render();
+      if (gymId && view.bookable > 0) loadSlots();
+    } catch (e) {
+      $('app').innerHTML = '<div class="err">' + esc(e) + '</div>';
+    }
+  }
+
+  function render() {
+    const v = view;
+    let h = '';
+    h += '<div class="hello">' + esc(v.name) + 'さん、こんにちは</div>';
+    h += '<div class="card"><div class="muted">今から予約できる回数</div>';
+    h += '<div class="count"><span class="num">' + v.bookable + '</span><span class="unit">回</span></div>';
+    h += '<div class="muted">回数券の残り ' + v.remaining + '回／承認待ち ' + v.pending + '件</div></div>';
+
+    h += '<h2>予約状況</h2><div class="card">';
+    if (!v.bookings.length) h += '<div class="muted">現在、予約はありません。</div>';
+    else {
+      h += '<ul class="list">';
+      v.bookings.forEach((b) => {
+        const ok = b.status === '確定';
+        h += '<li><div><div><b>' + esc(b.date) + '</b> ' + esc(b.time) + '</div><div class="muted">' + esc(b.gym) + '</div></div>' +
+          '<span class="pill ' + (ok ? 'ok' : 'wait') + '">' + (ok ? '確定' : '承認待ち') + '</span></li>';
+      });
+      h += '</ul>';
+    }
+    h += '</div>';
+
+    h += '<h2>新しく予約する</h2>';
+    if (v.bookable <= 0) {
+      const reason = v.remaining - v.pending <= 0
+        ? '予約できる回数が残っていません。続けてのご利用はトレーナーにご相談ください。'
+        : '承認待ちの仮予約が上限（' + v.maxPending + '件）に達しています。確定のご連絡をお待ちください。';
+      h += '<div class="note">' + reason + '</div>';
+    } else if (!v.gyms.length) {
+      h += '<div class="note">ご利用できるジムが設定されていません。トレーナーにお問い合わせください。</div>';
+    } else {
+      h += '<div class="muted" style="margin-bottom:8px">ジムを選んでください（' + v.leadDays + '日後以降の枠から選べます）</div><div class="gyms">';
+      v.gyms.forEach((g) => {
+        h += '<button class="gym' + (g.id === gymId ? ' on' : '') + '" data-gym="' + esc(g.id) + '">' + esc(g.name) + '</button>';
+      });
+      h += '</div><div id="slots"></div>';
+    }
+    h += '<p class="muted" style="margin-top:24px">キャンセル・日時の変更は、Slackでトレーナーに直接ご連絡ください。</p>';
+    $('app').innerHTML = h;
+
+    document.querySelectorAll('[data-gym]').forEach((el) => el.addEventListener('click', () => {
+      gymId = el.getAttribute('data-gym');
+      document.querySelectorAll('[data-gym]').forEach((x) => x.classList.toggle('on', x === el));
+      picked = null; hideBar(); shown = DAYS_PER_PAGE; dayIdx = 0;
+      loadSlots();
+    }));
+  }
+
+  async function loadSlots() {
+    const box = $('slots');
+    if (!box) return;
+    box.innerHTML = '<div class="spinner"></div>';
+    const requested = gymId;
+    try {
+      const res = await call('apiSlots', TOKEN, requested);
+      if (requested !== gymId) return; // 途中でジムを切り替えた
+      slots = res;
+      renderSlots();
+    } catch (e) {
+      box.innerHTML = '<div class="err">' + esc(e) + '</div>';
+    }
+  }
+
+  let dayIdx = 0;
+
+  function renderSlots() {
+    const box = $('slots');
+    if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">このジムで予約できる枠が今はありません。別のジムを選ぶか、トレーナーにご相談ください。</div>'; return; }
+    if (dayIdx >= slots.length) dayIdx = 0;
+    // ① 日付を横スクロールで選ぶ
+    let h = '<div class="dates" id="dates">';
+    slots.forEach((d, i) => {
+      const m = d.label.match(/^(\d+\/\d+)（(.)）/) || [];
+      const cls = m[2] === '土' ? ' sat' : m[2] === '日' ? ' sun' : '';
+      h += '<button class="date' + cls + (i === dayIdx ? ' on' : '') + '" data-day-idx="' + i + '">' +
+        '<div class="md">' + esc(m[1] || d.label) + '</div><div class="dw">' + esc(m[2] || '') + '</div>' +
+        '<div class="n">' + d.times.length + '枠</div></button>';
+    });
+    h += '</div><div class="hint">← 横にスクロールして日付を選べます →</div>';
+    // ② 選んだ日の時間を 朝・昼・夜 に分けて表示
+    const d = slots[dayIdx];
+    const bands = [['朝（〜12時）', 0, 12], ['昼（12〜17時）', 12, 17], ['夜（17時〜）', 17, 24]];
+    h += '<div class="day"><div class="label">' + esc(d.label) + ' の空き</div>';
+    bands.forEach(([name, from, to]) => {
+      const ts = d.times.filter((t) => { const hh = Number(t.label.split(':')[0]); return hh >= from && hh < to; });
+      if (!ts.length) return;
+      h += '<div class="band"><div class="bt">' + name + '</div><div class="times">';
+      ts.forEach((t) => {
+        const on = picked && picked.start === t.start;
+        h += '<button class="time' + (on ? ' on' : '') + '" data-start="' + esc(t.start) + '" data-day="' + esc(d.label) + '" data-label="' + esc(t.label) + '">' + esc(t.label) + '</button>';
+      });
+      h += '</div></div>';
+    });
+    h += '</div>';
+    box.innerHTML = h;
+
+    box.querySelectorAll('[data-day-idx]').forEach((el) => el.addEventListener('click', () => {
+      const x = $('dates').scrollLeft;
+      dayIdx = Number(el.getAttribute('data-day-idx'));
+      renderSlots();
+      $('dates').scrollLeft = x;
+    }));
+    box.querySelectorAll('[data-start]').forEach((el) => el.addEventListener('click', () => {
+      picked = { start: el.getAttribute('data-start'), day: el.getAttribute('data-day'), label: el.getAttribute('data-label') };
+      box.querySelectorAll('[data-start]').forEach((x) => x.classList.toggle('on', x === el));
+      const g = view.gyms.find((x) => x.id === gymId);
+      $('selText').textContent = picked.day + ' ' + picked.label + '〜（' + (g ? g.name : '') + '）';
+      $('bar').classList.add('show');
+    }));
+  }
+
+  function hideBar() { $('bar').classList.remove('show'); }
+
+  $('reqBtn').addEventListener('click', async () => {
+    if (!picked || busy) return;
+    busy = true; $('reqBtn').disabled = true; $('reqBtn').textContent = '送信中…';
+    try {
+      const r = await call('apiRequest', TOKEN, gymId, picked.start);
+      hideBar();
+      $('app').innerHTML = '<div class="done"><div class="check">✓</div>' +
+        '<div class="hello">仮予約を受け付けました</div>' +
+        '<div class="card" style="text-align:left"><b>' + esc(r.date) + '</b> ' + esc(r.time) + '<div class="muted">' + esc(r.gym) + '</div></div>' +
+        '<p class="muted">ジムの空きを確認して、トレーナーが確定します。確定したらSlackでお知らせします。</p>' +
+        '<button class="btn ghost" id="backBtn">予約画面に戻る</button></div>';
+      $('backBtn').addEventListener('click', load);
+    } catch (e) {
+      hideBar();
+      picked = null;
+      await loadSlots();
+      const box = $('slots');
+      if (box) box.insertAdjacentHTML('afterbegin', '<div class="err">' + esc(e) + '</div>');
+    } finally {
+      busy = false; $('reqBtn').disabled = false; $('reqBtn').textContent = 'この日時で仮予約する';
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
