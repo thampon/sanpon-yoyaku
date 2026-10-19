@@ -298,6 +298,7 @@
     h += '<div class="muted">回数券の残り ' + v.remaining + '回／承認待ち ' + v.pending + '件</div></div>';
 
     h += '<h2>予約状況</h2><div class="card bkl">';
+    v.bookings = (v.bookings || []).filter((b) => b.status !== '済'); // 終わった回は出さない
     if (!v.bookings.length) h += '<div class="muted">現在、予約はありません。</div>';
     else {
       h += '<table class="bkt"><thead><tr><th>日時</th><th>場所</th><th>状態</th></tr></thead><tbody>';
