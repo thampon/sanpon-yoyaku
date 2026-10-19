@@ -184,6 +184,15 @@
   /* 「優先」ラベル（お客さんごとの優先ジム） */
   .gym .tag { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:6px; background:#E9F2EE; color:#345D4D; font-size:11px; font-weight:700; line-height:1.6; vertical-align:1px; }
   .gym.on .tag { background:#ffffff26; color:#fff; }
+  /* 優先ジムで受けられる時間の印 */
+  .time { position:relative; }
+  .time .dot, .legend .dot { color:#3E8A6B; font-size:9px; vertical-align:2px; }
+  .time .dot { margin-left:4px; }
+  .time.on .dot { color:#BFE3D2; }
+  .time.pref:not(.on) { border-color:#9CC5B2; background:#F3F9F6; }
+  .date .np { font-size:10px; color:#3E8A6B; margin-top:3px; font-weight:700; line-height:1.4; }
+  .date.on .np { color:#BFE3D2; }
+  .legend { font-size:12px; color:var(--sub); margin-top:10px; }
 </style>
 </head>
 <body>
@@ -223,6 +232,9 @@
   }
   const curGroup = () => groups.find((x) => x.key === groupKey);
   const gymName = (id) => { const g = view.gyms.find((x) => x.id === id); return g ? g.name : ''; };
+  // お客さんごとの「優先ジム」（設定がある人だけ、空いていれば最初から選んでおき、空き時間に印をつける）
+  const prefId = () => { const g = view && view.gyms.find((x) => x.preferred); return g ? g.id : ''; };
+  const hasPref = (t) => !!prefId() && (t.gyms || []).indexOf(prefId()) >= 0;
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -325,12 +337,14 @@
       const cls = m[2] === '土' ? ' sat' : m[2] === '日' ? ' sun' : '';
       h += '<button class="date' + cls + (i === dayIdx ? ' on' : '') + '" data-day-idx="' + i + '">' +
         '<div class="md">' + esc(m[1] || d.label) + '</div><div class="dw">' + esc(m[2] || '') + '</div>' +
-        '<div class="n">' + d.times.length + '枠</div></button>';
+        '<div class="n">' + d.times.length + '枠</div>' +
+        (prefId() ? '<div class="np">' + (d.times.filter(hasPref).length ? '● ' + d.times.filter(hasPref).length : '&nbsp;') + '</div>' : '') + '</button>';
     });
     h += '</div><div class="hint">← 横にスクロールして日付を選べます →</div>';
     // ② 選んだ日の時間を 朝・昼・夜 に分けて表示
     const d = slots[dayIdx];
     const bands = [['朝（〜12時）', 0, 12], ['昼（12〜17時）', 12, 17], ['夜（17時〜）', 17, 24]];
+    if (prefId()) h += '<div class="legend"><span class="dot">●</span> ＝ ' + esc(gymName(prefId())) + 'で受けられる時間（おすすめ）</div>';
     h += '<div class="day"><div class="label">' + esc(d.label) + ' の空き</div>';
     bands.forEach(([name, from, to]) => {
       const ts = d.times.filter((t) => { const hh = Number(t.label.split(':')[0]); return hh >= from && hh < to; });
@@ -339,7 +353,7 @@
       ts.forEach((t) => {
         const on = picked && picked.start === t.start;
         const gs = (t.gyms || []).join(',');
-        h += '<button class="time' + (on ? ' on' : '') + '" data-start="' + esc(t.start) + '" data-day="' + esc(d.label) + '" data-label="' + esc(t.label) + '" data-gyms="' + esc(gs) + '">' + esc(t.label) + '</button>';
+        h += '<button class="time' + (on ? ' on' : '') + (hasPref(t) ? ' pref' : '') + '" data-start="' + esc(t.start) + '" data-day="' + esc(d.label) + '" data-label="' + esc(t.label) + '" data-gyms="' + esc(gs) + '">' + esc(t.label) + (hasPref(t) ? '<span class="dot">●</span>' : '') + '</button>';
       });
       h += '</div></div>';
     });
@@ -357,7 +371,8 @@
         gyms: (el.getAttribute('data-gyms') || '').split(',').filter(Boolean) };
       box.querySelectorAll('[data-start]').forEach((x) => x.classList.toggle('on', x === el));
       // その時間に空いている場所が1つなら自動で決定、複数なら場所を選んでもらう
-      gymId = picked.gyms.length === 1 ? picked.gyms[0] : null;
+      // 優先ジムが空いていれば最初から選んでおく（変えたい人だけ押し直す）
+      gymId = picked.gyms.length === 1 ? picked.gyms[0] : (prefId() && picked.gyms.indexOf(prefId()) >= 0 ? prefId() : null);
       renderBar();
       $('bar').classList.add('show');
     }));
