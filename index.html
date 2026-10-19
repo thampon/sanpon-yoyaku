@@ -196,6 +196,13 @@
   .date .np { font-size:10px; color:#3E8A6B; margin-top:3px; font-weight:700; line-height:1.4; }
   .date.on .np { color:#BFE3D2; }
   .legend { font-size:12px; color:var(--sub); margin-top:10px; }
+  /* 時間帯のしぼり込み */
+  .bandf { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
+  .bf { min-height:46px; border:1px solid #CAD7D4; background:#fff; border-radius:12px; padding:8px 4px; font-size:14px; font-weight:700; color:var(--navy); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px; line-height:1.3; flex-wrap:wrap; }
+  .bf small { display:block; width:100%; font-size:10px; font-weight:600; color:var(--sub); text-align:center; }
+  .bf .box { display:inline-flex; width:16px; height:16px; border:1.5px solid #9DB3AD; border-radius:4px; align-items:center; justify-content:center; font-size:11px; color:#fff; }
+  .bf.on { border-color:var(--navy); background:#EEF4F2; }
+  .bf.on .box { background:var(--navy); border-color:var(--navy); }
 </style>
 </head>
 <body>
@@ -338,13 +345,31 @@
 
   let dayIdx = 0;
 
+  // 時間帯のしぼり込み（朝・昼・夜）。チェックを外した時間帯の枠は日付の件数から外す
+  const BANDS = [['am', '朝', '〜12時', 0, 12], ['noon', '昼', '12〜17時', 12, 17], ['pm', '夜', '17時〜', 17, 24]];
+  let bandOn = { am: true, noon: true, pm: true };
+  try { const sv = JSON.parse(localStorage.getItem('sanpon_bands') || 'null'); if (sv && (sv.am || sv.noon || sv.pm)) bandOn = sv; } catch (e) {}
+  const hourOf = (t) => Number(t.label.split(':')[0]);
+  const inBands = (t) => BANDS.some(([k, , , f, to]) => bandOn[k] && hourOf(t) >= f && hourOf(t) < to);
+
   function renderSlots() {
     const box = $('slots');
     if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">予約できる枠が今はありません。トレーナーにご相談ください。</div>'; return; }
-    if (dayIdx >= slots.length) dayIdx = 0;
+    // しぼり込み後の日付一覧（選んでいた日はなるべく保つ）
+    const curLabel = window.__dayLabel;
+    const vs = slots.map((d) => ({ label: d.label, times: d.times.filter(inBands) })).filter((d) => d.times.length);
+    let h = '<div class="bandf">' + BANDS.map(([k, n, r]) =>
+      '<button class="bf' + (bandOn[k] ? ' on' : '') + '" data-band="' + k + '"><span class="box">' + (bandOn[k] ? '✓' : '') + '</span>' + n + '<small>' + r + '</small></button>').join('') + '</div>';
+    if (!vs.length) {
+      box.innerHTML = h + '<div class="note" style="margin-top:16px">選んだ時間帯に空きがありません。チェックを増やしてみてください。</div>';
+      bindBands(box); return;
+    }
+    const keep = vs.findIndex((d) => d.label === curLabel);
+    if (keep >= 0) dayIdx = keep; else if (dayIdx >= vs.length) dayIdx = 0;
+    window.__dayLabel = vs[dayIdx].label;
     // ① 日付を横スクロールで選ぶ
-    let h = '<div class="dates" id="dates">';
-    slots.forEach((d, i) => {
+    h += '<div class="dates" id="dates">';
+    vs.forEach((d, i) => {
       const m = d.label.match(/^(\d+\/\d+)（(.)）/) || [];
       const cls = m[2] === '土' ? ' sat' : m[2] === '日' ? ' sun' : '';
       h += '<button class="date' + cls + (i === dayIdx ? ' on' : '') + '" data-day-idx="' + i + '">' +
@@ -354,8 +379,8 @@
     });
     h += '</div><div class="hint">← 横にスクロールして日付を選べます →</div>';
     // ② 選んだ日の時間を 朝・昼・夜 に分けて表示
-    const d = slots[dayIdx];
-    const bands = [['朝（〜12時）', 0, 12], ['昼（12〜17時）', 12, 17], ['夜（17時〜）', 17, 24]];
+    const d = vs[dayIdx];
+    const bands = BANDS.filter(([k]) => bandOn[k]).map(([, nm, r, f, to]) => [nm + '（' + r + '）', f, to]);
     if (prefId()) h += '<div class="legend"><span class="dot">●</span> ＝ ' + esc(gymName(prefId())) + 'で受けられる時間（おすすめ）</div>';
     h += '<div class="day"><div class="label">' + esc(d.label) + ' の空き</div>';
     bands.forEach(([name, from, to]) => {
@@ -371,10 +396,12 @@
     });
     h += '</div>';
     box.innerHTML = h;
+    bindBands(box);
 
     box.querySelectorAll('[data-day-idx]').forEach((el) => el.addEventListener('click', () => {
       const x = $('dates').scrollLeft;
       dayIdx = Number(el.getAttribute('data-day-idx'));
+      window.__dayLabel = null;
       renderSlots();
       $('dates').scrollLeft = x;
     }));
@@ -387,6 +414,21 @@
       gymId = picked.gyms.length === 1 ? picked.gyms[0] : (prefId() && picked.gyms.indexOf(prefId()) >= 0 ? prefId() : null);
       renderBar();
       $('bar').classList.add('show');
+    }));
+  }
+
+  function bindBands(box) {
+    box.querySelectorAll('[data-band]').forEach((el) => el.addEventListener('click', () => {
+      const k = el.getAttribute('data-band');
+      const next = Object.assign({}, bandOn, { [k]: !bandOn[k] });
+      if (!next.am && !next.noon && !next.pm) return; // 全部は外せない
+      bandOn = next;
+      try { localStorage.setItem('sanpon_bands', JSON.stringify(bandOn)); } catch (e) {}
+      // 選んでいた時間がしぼり込みで消えたら選び直してもらう
+      if (picked && !inBands({ label: picked.label })) { picked = null; gymId = null; hideBar(); }
+      const x = $('dates') ? $('dates').scrollLeft : 0;
+      renderSlots();
+      if ($('dates')) $('dates').scrollLeft = x;
     }));
   }
 
