@@ -218,6 +218,9 @@
   .bkt td.g { width:100%; }
   .bkt td:last-child { text-align:right; }
   .bkt .pill { padding:3px 8px; font-size:11px; }
+  .bkt tr.past td { color:var(--sub); }
+  .bkt tr.past td .t { color:var(--sub); }
+  .pill.done { background:#EEF1F0; color:#7A8784; }
 </style>
 </head>
 <body>
@@ -325,9 +328,9 @@
     else {
       h += '<table class="bkt"><thead><tr><th>日時</th><th>場所</th><th>状態</th></tr></thead><tbody>';
       v.bookings.forEach((b) => {
-        const ok = b.status === '確定';
-        h += '<tr><td class="d">' + esc(b.date) + '<div class="t">' + esc(b.time) + '</div></td><td class="g">' + esc(b.gym) + '</td>' +
-          '<td><span class="pill ' + (ok ? 'ok' : 'wait') + '">' + (ok ? '確定' : '承認待ち') + '</span></td></tr>';
+        const done = b.status === '済', ok = b.status === '確定';
+        h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + '<div class="t">' + esc(b.time) + '</div></td><td class="g">' + esc(b.gym) + '</td>' +
+          '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : '承認待ち') + '</span></td></tr>';
       });
       h += '</tbody></table>';
     }
