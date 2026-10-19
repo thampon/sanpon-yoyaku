@@ -80,20 +80,25 @@
   // 通信が一瞬こけても自動でやり直す（最大3回）。申請など書き込み系は二重登録を避けるため1回だけ
   const READ_ONLY = { apiCustomerView: 1, apiSlots: 1, apiSlotsAll: 1, apiAdminView: 1 };
   const call = async (fn, ...args) => {
-    const tries = READ_ONLY[fn] ? 3 : 1;
+    const tries = READ_ONLY[fn] ? 4 : 1;
     let lastErr = null;
     for (let i = 0; i < tries; i++) {
       if (i) await new Promise((r) => setTimeout(r, 1200 * i));
-      let r;
+      let r, j;
+      // 読み込み系は30秒で見切ってやり直す（Google側でたまに返事が詰まるため）
+      const ac = (READ_ONLY[fn] && window.AbortController) ? new AbortController() : null;
+      const timer = ac ? setTimeout(() => ac.abort(), 30000) : null;
       try {
-        r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit', cache: 'no-store' });
-      } catch (e) { lastErr = e; continue; }
-      const j = await r.json().catch(() => null);
+        r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit', cache: 'no-store', signal: ac ? ac.signal : undefined });
+        j = await r.json().catch(() => null);
+      } catch (e) { lastErr = e; continue; } finally { if (timer) clearTimeout(timer); }
       if (!j) { lastErr = new Error('bad response ' + r.status); continue; }
       if (!j.ok) throw j.error;
       return j.result;
     }
     try { console.warn('call failed', fn, lastErr); } catch (e) {}
+    // 申請などは、送れていても返事だけ受け取れなかった可能性がある（二重申請を防ぐため、確認をお願いする）
+    if (!READ_ONLY[fn]) throw '送信結果を確認できませんでした。ページを再読み込みして「予約状況」に入っているか確認してください（入っていなければ、もう一度お試しください）。';
     throw '通信できませんでした（' + String(lastErr && lastErr.message || lastErr).slice(0, 60) + '）。ページを再読み込みしてもう一度お試しください。';
   };
 
