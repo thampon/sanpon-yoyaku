@@ -48,6 +48,8 @@
   .modal-bg { position: fixed; inset: 0; background: rgba(20,30,20,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
   .modal { background: #fff; border-radius: 14px; padding: 18px; width: 100%; max-width: 420px; }
   .modal h3 { margin: 0 0 8px; font-size: 16px; }
+  .modal label { display: block; font-size: 13px; color: var(--sub); margin-top: 10px; }
+  .modal select { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; background: #fff; font-family: inherit; }
   .modal input, .modal textarea { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; margin-top: 8px; font-family: inherit; }
   .modal .actions { justify-content: flex-end; }
   .spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; margin: 32px auto; }
@@ -114,6 +116,7 @@
       bg.className = 'modal-bg';
       let inner = '<div class="modal"><h3>' + esc(opts.title) + '</h3>';
       if (opts.body) inner += '<div class="muted">' + opts.body + '</div>';
+      if (opts.extra) inner += opts.extra;
       if (opts.input) {
         inner += opts.input.multiline
           ? '<textarea id="askIn" rows="3" placeholder="' + esc(opts.input.placeholder || '') + '">' + esc(opts.input.value || '') + '</textarea>'
@@ -133,8 +136,10 @@
         if (ev.target === bg || (el && el.dataset.v === '__cancel')) { bg.remove(); resolve(null); return; }
         if (el && el.dataset.i !== undefined) {
           const b = opts.buttons[Number(el.dataset.i)];
+          const vals = {};
+          bg.querySelectorAll('[name]').forEach((f) => { vals[f.name] = f.value; });
           bg.remove();
-          resolve({ value: b.value, text: input ? input.value : '' });
+          resolve({ value: b.value, text: input ? input.value : '', vals });
         }
       });
     });
@@ -178,6 +183,7 @@
     $('content').innerHTML = '<p class="muted">ジムを押さえてから「承認」を押してください。承認すると回数券が1回減り、お客さんにSlackで確定連絡が届きます。</p>' +
       data.pending.map((b) => bookingCard(b,
         '<button class="btn" data-act="approve" data-id="' + esc(b.id) + '">承認する</button>' +
+        (data.gyms && b.day ? '<button class="btn sub" data-act="edit" data-id="' + esc(b.id) + '">日時・場所を変えて承認</button>' : '') +
         '<button class="btn danger" data-act="reject" data-id="' + esc(b.id) + '">却下する</button>')).join('');
   }
 
@@ -232,6 +238,36 @@
       const r = await ask({ title: '承認しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>ジムは押さえましたか？',
         buttons: [{ label: '承認する', value: 1 }] });
       if (r) run('apiApprove', id);
+    } else if (act === 'edit') {
+      const b = find(data.pending, id);
+      const gyms = (data.gyms || []).slice();
+      if (!gyms.some((g) => g.id === b.gymId)) gyms.unshift({ id: b.gymId, name: b.gym });
+      const hm = b.hm.length === 4 ? '0' + b.hm : b.hm;
+      const extra = '<label>日付<input type="date" name="date" value="' + esc(b.day) + '"></label>' +
+        '<label>開始時刻<input type="time" name="time" step="300" value="' + esc(hm) + '"></label>' +
+        '<label>場所<select name="gymId">' + gyms.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === b.gymId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>';
+      const r = await ask({ title: '日時・場所を変えて承認', body: esc(b.name) + 'さんのご希望：' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) +
+        '<br>長さはご希望と同じです。確定連絡に「ご希望から変更」と書き添えて送ります。ジムは押さえましたか？',
+        extra, buttons: [{ label: 'この内容で承認する', value: 1 }] });
+      if (!r) return;
+      const ch = { date: r.vals.date, time: r.vals.time, gymId: r.vals.gymId };
+      if (!ch.date || !ch.time) { toast('⚠ 日付と時刻を入れてください'); return; }
+      if (working) return;
+      working = true;
+      document.querySelectorAll('[data-act]').forEach((x) => (x.disabled = true));
+      let msg = null, err = null;
+      try { msg = await call('apiApprove', ADMIN, id, ch); } catch (e) { err = String(e); }
+      working = false;
+      document.querySelectorAll('[data-act]').forEach((x) => (x.disabled = false));
+      if (err && err.indexOf('【重なり】') === 0) {
+        const r2 = await ask({ title: 'カレンダーの予定と重なっています', body: esc(err.replace('【重なり】', '')) + '<br>このまま承認しますか？',
+          buttons: [{ label: '重なっていても承認する', value: 1 }] });
+        if (r2) run('apiApprove', id, Object.assign(ch, { force: true }));
+        return;
+      }
+      if (err) { toast('⚠ ' + err, 7000); return; }
+      toast(msg, 6000);
+      load();
     } else if (act === 'reject') {
       const b = find(data.pending, id);
       const r = await ask({ title: '却下しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '<br>理由はお客さんへのメッセージに入ります（空欄でもOK）。',
