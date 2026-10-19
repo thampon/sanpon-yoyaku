@@ -200,11 +200,11 @@
   .bf .box { display:inline-flex; width:16px; height:16px; border:1.5px solid #9DB3AD; border-radius:4px; align-items:center; justify-content:center; font-size:11px; color:#fff; }
   .bf.on { border-color:var(--navy); background:#EEF4F2; }
   .bf.on .box { background:var(--navy); border-color:var(--navy); }
-  .trainer { display:flex; gap:14px; align-items:flex-start; margin-top:32px; padding:16px; background:#fff; border:1px solid var(--line); border-radius:16px; }
+  .trainer { display:flex; gap:14px; align-items:center; margin-top:32px; padding:16px; background:#fff; border:1px solid var(--line); border-radius:16px; }
   .trainer img { width:64px; height:64px; border-radius:50%; object-fit:cover; flex:none; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); }
   .trainer .t-role { font-size:11px; color:var(--sub); letter-spacing:.06em; }
   .trainer .t-name { font-weight:700; color:var(--navy); font-size:16px; line-height:1.4; }
-  .trainer .t-msg { font-size:13px; color:var(--ink); line-height:1.75; margin-top:4px; }
+  .trainer .t-msg { color:var(--ink); }
 </style>
 </head>
 <body>
@@ -310,8 +310,7 @@
       h += '<div id="slots"></div>';
     }
     h += '<div class="trainer"><img src="trainer.jpg" alt="トレーナー さんぽん" width="64" height="64" loading="lazy">' +
-      '<div><div class="t-role">担当トレーナー</div><div class="t-name">さんぽん</div>' +
-      '<div class="t-msg">ご予約ありがとうございます！当日お会いできるのを楽しみにしています。キャンセル・日時の変更は、Slackで気軽にご連絡ください。</div></div></div>';
+      '<div class="t-msg">ご予約ありがとうございます！当日お会いできるのを楽しみにしています。キャンセル・日時の変更は、Slackで気軽にご連絡ください。<br>さんぽん</div></div>';
     $('app').innerHTML = h;
 
     document.querySelectorAll('[data-gym]').forEach((el) => el.addEventListener('click', () => {
