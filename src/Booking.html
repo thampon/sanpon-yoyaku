@@ -200,6 +200,11 @@
   .bf .box { display:inline-flex; width:16px; height:16px; border:1.5px solid #9DB3AD; border-radius:4px; align-items:center; justify-content:center; font-size:11px; color:#fff; }
   .bf.on { border-color:var(--navy); background:#EEF4F2; }
   .bf.on .box { background:var(--navy); border-color:var(--navy); }
+  .trainer { display:flex; gap:14px; align-items:flex-start; margin-top:32px; padding:16px; background:#fff; border:1px solid var(--line); border-radius:16px; }
+  .trainer img { width:64px; height:64px; border-radius:50%; object-fit:cover; flex:none; border:2px solid #fff; box-shadow:0 0 0 1px var(--line); }
+  .trainer .t-role { font-size:11px; color:var(--sub); letter-spacing:.06em; }
+  .trainer .t-name { font-weight:700; color:var(--navy); font-size:16px; line-height:1.4; }
+  .trainer .t-msg { font-size:13px; color:var(--ink); line-height:1.75; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -304,7 +309,9 @@
       h += '<div class="muted" style="margin-bottom:8px">日時を選んでください。場所はそのあとに選べます（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）' + (v.sessionMin > 60 ? '<br>1回' + (v.sessionMin % 60 ? v.sessionMin + '分' : (v.sessionMin / 60) + '時間') + 'のセッションです。' : '') + '</div>';
       h += '<div id="slots"></div>';
     }
-    h += '<p class="muted" style="margin-top:24px">キャンセル・日時の変更は、Slackでトレーナーに直接ご連絡ください。</p>';
+    h += '<div class="trainer"><img src="trainer.jpg" alt="トレーナー さんぽん" width="64" height="64" loading="lazy">' +
+      '<div><div class="t-role">担当トレーナー</div><div class="t-name">さんぽん</div>' +
+      '<div class="t-msg">ご予約ありがとうございます！当日お会いできるのを楽しみにしています。キャンセル・日時の変更は、Slackで気軽にご連絡ください。</div></div></div>';
     $('app').innerHTML = h;
 
     document.querySelectorAll('[data-gym]').forEach((el) => el.addEventListener('click', () => {
