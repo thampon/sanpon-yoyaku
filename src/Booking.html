@@ -233,6 +233,13 @@
   .bkt td.d .t { font-weight:400; margin-left:2px; }
   .bkt td.g { padding-left:8px; color:var(--sub); }
   .bkt .pill { padding:2px 7px; font-size:11px; }
+  /* 新規予約を目立たせる＋前回表示中の案内（10/19） */
+  h2.newh { display:flex; align-items:center; gap:10px; margin:30px 0 12px; padding:13px 16px; border-radius:14px;
+    background:var(--blue-pale); color:var(--navy); border-left:5px solid var(--navy); border-radius:6px 14px 14px 6px; font-size:17px; letter-spacing:.03em; }
+  h2.newh .plus { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%;
+    background:var(--navy); color:#fff; font-size:16px; line-height:1; }
+  .stalenote { font-size:12.5px; color:var(--sub); background:#fff; border:1px dashed var(--line); border-radius:10px; padding:8px 12px; margin:0 0 12px; }
+  .is-stale .time { opacity:.45; }
 </style>
 </head>
 <body>
@@ -281,26 +288,51 @@
   const call = (fn, ...args) => new Promise((res, rej) =>
     google.script.run.withSuccessHandler(res).withFailureHandler((e) => rej(e && e.message ? e.message : String(e)))[fn](...args));
 
+  // 前回開いたときの内容を端末に置いておき、次に開いた瞬間に表示 → 裏で最新を取って差し替える
+  const CKEY = 'sanpon_c_' + String(TOKEN).slice(0, 12);
+  let stale = false;
+  function readCache() {
+    try { const c = JSON.parse(localStorage.getItem(CKEY) || 'null'); if (c && c.view && Date.now() - c.at < 3 * 86400000) return c; } catch (e) {}
+    return null;
+  }
+  function writeCache() {
+    try { if (view) localStorage.setItem(CKEY, JSON.stringify({ at: Date.now(), view, slots: slotsByGym })); } catch (e) {}
+  }
+  function showView() {
+    // 日時を先に選び、そのあと「その時間に空いている場所」から選ぶ（全部の場所をまとめて表示）
+    groups = view.gyms.length ? [{ key: 'all', label: '', gyms: view.gyms }] : [];
+    groupKey = groups.length ? 'all' : null;
+    gymId = null; picked = null;
+    slots = []; shown = DAYS_PER_PAGE;
+    render();
+    if (groupKey && view.bookable > 0) loadSlots();
+  }
+
   async function load(pre) {
-    $('app').innerHTML = '<div class="spinner"></div>';
     hideBar();
-    if (!pre || !pre.viewP) {
-      slotsByGym = {};
+    const usePre = !!(pre && pre.viewP);
+    const cached = (!usePre && !view) ? readCache() : null;
+    if (cached) { view = cached.view; slotsByGym = cached.slots || {}; stale = true; showView(); }
+    else $('app').innerHTML = '<div class="spinner"></div>';
+    if (!usePre) {
+      if (!cached) slotsByGym = {};
       // 予約状況と空き枠を同時に取りにいく（順番に待つと遅いので）
-      slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
+      slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { if (m) slotsByGym = m; return m; }).catch(() => null);
     }
     try {
       // 予約直後は、完了画面を見ている間に裏で取っておいた予約状況を使う（待ち時間なしで戻れる）
-      view = await ((pre && pre.viewP) ? pre.viewP.catch(() => call('apiCustomerView', TOKEN)) : call('apiCustomerView', TOKEN));
-      // 日時を先に選び、そのあと「その時間に空いている場所」から選ぶ（全部の場所をまとめて表示）
-      groups = view.gyms.length ? [{ key: 'all', label: '', gyms: view.gyms }] : [];
-      groupKey = groups.length ? 'all' : null;
-      gymId = null;
-      slots = []; shown = DAYS_PER_PAGE;
-      render();
-      if (groupKey && view.bookable > 0) loadSlots();
+      const v = await (usePre ? pre.viewP.catch(() => call('apiCustomerView', TOKEN)) : call('apiCustomerView', TOKEN));
+      if (cached && slotsAllP) await slotsAllP;
+      view = v; stale = false;
+      showView();
+      (slotsAllP && !usePre ? slotsAllP : Promise.resolve()).then(() => writeCache());
     } catch (e) {
-      $('app').innerHTML = '<div class="err">' + esc(e) + '</div>';
+      if (cached) {
+        const box = $('slots') || $('app');
+        box.insertAdjacentHTML('afterbegin', '<div class="err">最新の情報を取得できませんでした。ページを再読み込みしてください。（' + esc(e) + '）</div>');
+      } else {
+        $('app').innerHTML = '<div class="err">' + esc(e) + '</div>';
+      }
     }
   }
 
@@ -326,7 +358,7 @@
     }
     h += '</div>';
 
-    h += '<h2>新しく予約する</h2>';
+    h += '<h2 class="newh" id="newbk"><span class="plus">＋</span>新しく予約する</h2>';
     if (v.bookable <= 0) {
       const reason = v.remaining - v.pending <= 0
         ? '予約できる回数が残っていません。続けてのご利用はトレーナーにご相談ください。'
@@ -421,7 +453,9 @@
       h += '</div></div>';
     });
     h += '</div>';
+    if (stale) h = '<div class="stalenote">最新の空き状況を確認中…（数秒で選べるようになります）</div>' + h;
     box.innerHTML = h;
+    box.classList.toggle('is-stale', stale);
     bindBands(box);
 
     box.querySelectorAll('[data-day-idx]').forEach((el) => el.addEventListener('click', () => {
@@ -432,6 +466,7 @@
       $('dates').scrollLeft = x;
     }));
     box.querySelectorAll('[data-start]').forEach((el) => el.addEventListener('click', () => {
+      if (stale) return; // 最新の空きを確認中は押せない（前回の内容を表示しているため）
       picked = { start: el.getAttribute('data-start'), day: el.getAttribute('data-day'), label: el.getAttribute('data-label'),
         gyms: (el.getAttribute('data-gyms') || '').split(',').filter(Boolean) };
       box.querySelectorAll('[data-start]').forEach((x) => x.classList.toggle('on', x === el));
