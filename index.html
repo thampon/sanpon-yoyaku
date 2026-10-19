@@ -249,8 +249,9 @@
     slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
     try {
       view = await call('apiCustomerView', TOKEN);
-      groups = buildGroups(view.gyms);
-      groupKey = groups.length === 1 ? groups[0].key : null;
+      // 日時を先に選び、そのあと「その時間に空いている場所」から選ぶ（全部の場所をまとめて表示）
+      groups = view.gyms.length ? [{ key: 'all', label: '', gyms: view.gyms }] : [];
+      groupKey = groups.length ? 'all' : null;
       gymId = null;
       slots = []; shown = DAYS_PER_PAGE;
       render();
@@ -290,12 +291,8 @@
     } else if (!v.gyms.length) {
       h += '<div class="note">ご利用できるジムが設定されていません。トレーナーにお問い合わせください。</div>';
     } else {
-      h += '<div class="muted" style="margin-bottom:8px">ジムを選んでください（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）</div><div class="gyms">';
-      groups.forEach((g) => {
-        const pref = g.gyms.some((x) => x.preferred) ? '<span class="tag">優先</span>' : '';
-        h += '<button class="gym' + (g.key === groupKey ? ' on' : '') + '" data-gym="' + esc(g.key) + '">' + esc(g.label) + pref + '</button>';
-      });
-      h += '</div><div id="slots"></div>';
+      h += '<div class="muted" style="margin-bottom:8px">日時を選んでください。場所はそのあとに選べます（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）</div>';
+      h += '<div id="slots"></div>';
     }
     h += '<p class="muted" style="margin-top:24px">キャンセル・日時の変更は、Slackでトレーナーに直接ご連絡ください。</p>';
     $('app').innerHTML = h;
@@ -331,7 +328,7 @@
 
   function renderSlots() {
     const box = $('slots');
-    if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">このジムで予約できる枠が今はありません。別のジムを選ぶか、トレーナーにご相談ください。</div>'; return; }
+    if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">予約できる枠が今はありません。トレーナーにご相談ください。</div>'; return; }
     if (dayIdx >= slots.length) dayIdx = 0;
     // ① 日付を横スクロールで選ぶ
     let h = '<div class="dates" id="dates">';
