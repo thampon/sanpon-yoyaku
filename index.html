@@ -221,6 +221,21 @@
   .bkt tr.past td { color:var(--sub); }
   .bkt tr.past td .t { color:var(--sub); }
   .pill.done { background:#EEF1F0; color:#7A8784; }
+  /* コンパクト化（10/19）：緑の回数カードを1段に、予約状況を1件1行に */
+  .hello { margin-bottom:12px; }
+  #app > .hello + .card { display:grid; grid-template-columns:1fr auto; align-items:center; column-gap:14px; row-gap:2px; padding:14px 18px; }
+  #app > .hello + .card > .muted:first-child { grid-column:1; grid-row:1; }
+  #app > .hello + .card > .count { grid-column:2; grid-row:1 / span 2; margin:0; gap:4px; }
+  #app > .hello + .card > .muted:last-child { grid-column:1; grid-row:2; border-top:0; padding-top:0; margin-top:0; }
+  #app > .hello + .card .count .num { font-size:38px; }
+  #app > .hello + .card .count .unit { font-size:14px; }
+  .bkl { padding:2px 12px; }
+  .bkt { font-size:13.5px; }
+  .bkt td { padding:9px 4px; line-height:1.45; }
+  .bkt td.d { white-space:nowrap; }
+  .bkt td.d .t { font-weight:400; margin-left:2px; }
+  .bkt td.g { padding-left:8px; color:var(--sub); }
+  .bkt .pill { padding:2px 7px; font-size:11px; }
 </style>
 </head>
 <body>
@@ -327,10 +342,10 @@
     v.bookings = (v.bookings || []).filter((b) => b.status !== '済'); // 終わった回は出さない
     if (!v.bookings.length) h += '<div class="muted">現在、予約はありません。</div>';
     else {
-      h += '<table class="bkt"><thead><tr><th>日時</th><th>場所</th><th>状態</th></tr></thead><tbody>';
+      h += '<table class="bkt"><tbody>';
       v.bookings.forEach((b) => {
         const done = b.status === '済', ok = b.status === '確定';
-        h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + '<div class="t">' + esc(b.time) + '</div></td><td class="g">' + esc(b.gym) + '</td>' +
+        h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + ' <span class="t">' + esc(String(b.time).split('〜')[0]) + '〜</span></td><td class="g">' + esc(b.gym) + '</td>' +
           '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : '承認待ち') + '</span></td></tr>';
       });
       h += '</tbody></table>';
