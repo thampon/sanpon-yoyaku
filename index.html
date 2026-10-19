@@ -249,15 +249,24 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const API_URL = "https://script.google.com/macros/s/AKfycbyn8BzGeSM6x5tSeIhi0vAlIhX7n8NpY-u_GSXo5exqINmJa_U9Nwe08gIJjlUDPg-M/exec";
+  // 通信が一瞬こけても自動でやり直す（最大3回）。申請など書き込み系は二重登録を避けるため1回だけ
+  const READ_ONLY = { apiCustomerView: 1, apiSlots: 1, apiSlotsAll: 1, apiAdminView: 1 };
   const call = async (fn, ...args) => {
-    let r;
-    try {
-      r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit' });
-    } catch (e) { throw '通信できませんでした。電波の良いところでもう一度お試しください。'; }
-    const j = await r.json().catch(() => null);
-    if (!j) throw 'エラーが発生しました。時間をおいて再度お試しください。';
-    if (!j.ok) throw j.error;
-    return j.result;
+    const tries = READ_ONLY[fn] ? 3 : 1;
+    let lastErr = null;
+    for (let i = 0; i < tries; i++) {
+      if (i) await new Promise((r) => setTimeout(r, 1200 * i));
+      let r;
+      try {
+        r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ fn, args }), redirect: 'follow', credentials: 'omit', cache: 'no-store' });
+      } catch (e) { lastErr = e; continue; }
+      const j = await r.json().catch(() => null);
+      if (!j) { lastErr = new Error('bad response ' + r.status); continue; }
+      if (!j.ok) throw j.error;
+      return j.result;
+    }
+    try { console.warn('call failed', fn, lastErr); } catch (e) {}
+    throw '通信できませんでした（' + String(lastErr && lastErr.message || lastErr).slice(0, 60) + '）。ページを再読み込みしてもう一度お試しください。';
   };
 
   async function load() {
