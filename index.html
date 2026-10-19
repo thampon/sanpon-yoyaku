@@ -274,14 +274,17 @@
     throw '通信できませんでした（' + String(lastErr && lastErr.message || lastErr).slice(0, 60) + '）。ページを再読み込みしてもう一度お試しください。';
   };
 
-  async function load() {
+  async function load(pre) {
     $('app').innerHTML = '<div class="spinner"></div>';
     hideBar();
-    slotsByGym = {};
-    // 予約状況と空き枠を同時に取りにいく（順番に待つと遅いので）
-    slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
+    if (!pre || !pre.viewP) {
+      slotsByGym = {};
+      // 予約状況と空き枠を同時に取りにいく（順番に待つと遅いので）
+      slotsAllP = call('apiSlotsAll', TOKEN).then((m) => { slotsByGym = m || {}; return slotsByGym; }).catch(() => null);
+    }
     try {
-      view = await call('apiCustomerView', TOKEN);
+      // 予約直後は、完了画面を見ている間に裏で取っておいた予約状況を使う（待ち時間なしで戻れる）
+      view = await ((pre && pre.viewP) ? pre.viewP.catch(() => call('apiCustomerView', TOKEN)) : call('apiCustomerView', TOKEN));
       // 日時を先に選び、そのあと「その時間に空いている場所」から選ぶ（全部の場所をまとめて表示）
       groups = view.gyms.length ? [{ key: 'all', label: '', gyms: view.gyms }] : [];
       groupKey = groups.length ? 'all' : null;
@@ -482,16 +485,25 @@
 
   $('reqBtn').addEventListener('click', async () => {
     if (!picked || !gymId || busy) return;
-    busy = true; $('reqBtn').disabled = true; $('reqBtn').textContent = '送信中…';
+    busy = true; $('reqBtn').disabled = true; $('reqBtn').textContent = '送信中…（数秒かかります）';
     try {
+      const bookedStart = new Date(picked.start).getTime();
       const r = await call('apiRequest', TOKEN, gymId, picked.start);
+      // 次の予約に備えて、裏で予約状況を取り直しておく。空き枠は手元の一覧から今入れた時間の前後だけ外す
+      const viewP = call('apiCustomerView', TOKEN); viewP.catch(() => {});
+      const len = ((view && view.sessionMin) || 60) * 60000, buf = 60 * 60000;
+      Object.keys(slotsByGym).forEach((id) => {
+        slotsByGym[id] = (slotsByGym[id] || []).map((d) => Object.assign({}, d, { times: d.times.filter((t) => {
+          const ts = new Date(t.start).getTime(); return !(ts < bookedStart + len + buf && ts + len > bookedStart - buf); }) }))
+          .filter((d) => d.times.length);
+      });
       hideBar();
       $('app').innerHTML = '<div class="done"><div class="check">✓</div>' +
         '<div class="hello">仮予約を受け付けました</div>' +
         '<div class="card" style="text-align:left"><b>' + esc(r.date) + '</b> ' + esc(r.time) + '<div class="muted">' + esc(r.gym) + '</div></div>' +
         '<p class="muted">ジムの空きを確認して、トレーナーが確定します。確定したらSlackでお知らせします。</p>' +
         '<button class="btn ghost" id="backBtn">予約画面に戻る</button></div>';
-      $('backBtn').addEventListener('click', load);
+      $('backBtn').addEventListener('click', () => load({ viewP }));
     } catch (e) {
       hideBar();
       picked = null;
