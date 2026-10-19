@@ -291,7 +291,7 @@
     } else if (!v.gyms.length) {
       h += '<div class="note">ご利用できるジムが設定されていません。トレーナーにお問い合わせください。</div>';
     } else {
-      h += '<div class="muted" style="margin-bottom:8px">日時を選んでください。場所はそのあとに選べます（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）</div>';
+      h += '<div class="muted" style="margin-bottom:8px">日時を選んでください。場所はそのあとに選べます（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）' + (v.sessionMin > 60 ? '<br>1回' + (v.sessionMin % 60 ? v.sessionMin + '分' : (v.sessionMin / 60) + '時間') + 'のセッションです。' : '') + '</div>';
       h += '<div id="slots"></div>';
     }
     h += '<p class="muted" style="margin-top:24px">キャンセル・日時の変更は、Slackでトレーナーに直接ご連絡ください。</p>';
