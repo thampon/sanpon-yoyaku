@@ -205,6 +205,9 @@
   .trainer .t-role { font-size:11px; color:var(--sub); letter-spacing:.06em; }
   .trainer .t-name { font-weight:700; color:var(--navy); font-size:16px; line-height:1.4; }
   .trainer .t-msg { color:var(--ink); }
+  .date .mybk { margin-top:4px; font-size:10px; font-weight:700; line-height:1.5; padding:0 6px; border-radius:999px; background:#FFF4DA; color:#7A5A10; }
+  .date.on .mybk { background:#FFE7A8; color:#5C430A; }
+  .mine { margin:2px 0 12px; padding:10px 12px; border-radius:12px; background:#FFF8E6; border:1px solid #F1E2B5; color:#5C470F; font-size:14px; }
 </style>
 </head>
 <body>
@@ -349,6 +352,8 @@
   const hourOf = (t) => Number(t.label.split(':')[0]);
   const inBands = (t) => BANDS.some(([k, , , f, to]) => bandOn[k] && hourOf(t) >= f && hourOf(t) < to);
 
+  // この日にすでに入っているご本人の予約（確定・承認待ち）
+  const myOn = (label) => ((view && view.bookings) || []).filter((b) => b.date === label);
   function renderSlots() {
     const box = $('slots');
     if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">予約できる枠が今はありません。トレーナーにご相談ください。</div>'; return; }
@@ -372,6 +377,7 @@
       h += '<button class="date' + cls + (i === dayIdx ? ' on' : '') + '" data-day-idx="' + i + '">' +
         '<div class="md">' + esc(m[1] || d.label) + '</div><div class="dw">' + esc(m[2] || '') + '</div>' +
         '<div class="n">' + d.times.length + '枠</div>' +
+        (myOn(d.label).length ? '<div class="mybk">予約済</div>' : '') +
         (prefId() ? '<div class="np">' + (d.times.filter(hasPref).length ? '● ' + d.times.filter(hasPref).length : '&nbsp;') + '</div>' : '') + '</button>';
     });
     h += '</div><div class="hint">← 横にスクロールして日付を選べます →</div>';
@@ -380,6 +386,9 @@
     const bands = BANDS.filter(([k]) => bandOn[k]).map(([, nm, r, f, to]) => [nm + '（' + r + '）', f, to]);
     if (prefId()) h += '<div class="legend"><span class="dot">●</span> ＝ ' + esc(gymName(prefId())) + 'で受けられる時間（おすすめ）</div>';
     h += '<div class="day"><div class="label">' + esc(d.label) + ' の空き</div>';
+    myOn(d.label).forEach((b) => {
+      h += '<div class="mine">この日は <b>' + esc(b.time) + '</b>（' + esc(b.gym) + '）で' + (b.status === '確定' ? '予約済み' : '仮予約中') + 'です</div>';
+    });
     bands.forEach(([name, from, to]) => {
       const ts = d.times.filter((t) => { const hh = Number(t.label.split(':')[0]); return hh >= from && hh < to; });
       if (!ts.length) return;

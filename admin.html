@@ -55,6 +55,7 @@
   .spinner { width: 22px; height: 22px; border: 3px solid var(--line); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; margin: 32px auto; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
+  .stale { font-size: 12px; color: var(--sub); background: #fff; border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
   @media (max-width: 560px) { .hide-sm { display: none; } }
 </style>
 </head>
@@ -67,6 +68,7 @@
     <button class="tab" data-tab="upcoming">確定予約</button>
     <button class="tab" data-tab="customers">顧客・回数券</button>
   </div>
+  <div id="stale" class="stale hidden"></div>
   <div id="warnings"></div>
   <div id="content"><div class="spinner"></div></div>
 </main>
@@ -137,22 +139,43 @@
         if (el && el.dataset.i !== undefined) {
           const b = opts.buttons[Number(el.dataset.i)];
           const vals = {};
-          bg.querySelectorAll('[name]').forEach((f) => { vals[f.name] = f.value; });
+          let checked = false;
+          bg.querySelectorAll('[name]').forEach((f) => { if (f.type === 'checkbox') { if (f.name === 'notify') checked = f.checked; } else vals[f.name] = f.value; });
           bg.remove();
-          resolve({ value: b.value, text: input ? input.value : '', vals });
+          resolve({ value: b.value, text: input ? input.value : '', vals, checked });
         }
       });
     });
   }
 
+  // 前回の内容をすぐ表示し、裏で最新を取ってきて差し替える（開いた瞬間に見られるように）
+  const CACHE_KEY = 'sanpon_admin_cache';
   async function load() {
-    $('content').innerHTML = '<div class="spinner"></div>';
+    let shownCache = false;
+    if (!data) {
+      try {
+        const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+        if (c && c.data) { data = c.data; shownCache = true; render(); setStale(c.at); }
+      } catch (e) { /* 保存できない環境では普通に読み込む */ }
+    } else { setStale(Date.now(), true); }
+    if (!data) $('content').innerHTML = '<div class="spinner"></div>';
     try {
-      data = await call('apiAdminView', ADMIN);
-      render();
+      const fresh = await call('apiAdminView', ADMIN);
+      data = fresh; render(); setStale(0);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data: fresh })); } catch (e) {}
     } catch (e) {
-      $('content').innerHTML = '<div class="warn">' + esc(e) + '</div>';
+      if (data) { setStale(-1); toast('⚠ 最新の取得に失敗しました：' + e, 7000); }
+      else $('content').innerHTML = '<div class="warn">' + esc(e) + '</div>';
     }
+  }
+  function setStale(at, refreshing) {
+    const el = $('stale');
+    if (!el) return;
+    if (at === 0) { el.textContent = ''; el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.textContent = at === -1 ? '最新の内容を取得できませんでした（表示は前回の内容です）。「更新」で再読み込み'
+      : refreshing ? '最新の内容を確認中…'
+      : '前回の内容を表示中（' + new Date(at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) + '時点）。最新を確認中…';
   }
 
   function render() {
@@ -190,6 +213,7 @@
   function renderUpcoming() {
     if (!data.upcoming.length) { $('content').innerHTML = '<div class="empty">確定済みの予約はありません。</div>'; return; }
     $('content').innerHTML = data.upcoming.map((b) => bookingCard(b,
+      (data.gyms && b.day ? '<button class="btn sub" data-act="move" data-id="' + esc(b.id) + '">日時・場所を変更</button>' : '') +
       '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセルする</button>')).join('');
   }
 
@@ -238,31 +262,38 @@
       const r = await ask({ title: '承認しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>ジムは押さえましたか？',
         buttons: [{ label: '承認する', value: 1 }] });
       if (r) run('apiApprove', id);
-    } else if (act === 'edit') {
-      const b = find(data.pending, id);
+    } else if (act === 'edit' || act === 'move') {
+      const isMove = act === 'move';
+      const b = find(isMove ? data.upcoming : data.pending, id);
       const gyms = (data.gyms || []).slice();
       if (!gyms.some((g) => g.id === b.gymId)) gyms.unshift({ id: b.gymId, name: b.gym });
       const hm = b.hm.length === 4 ? '0' + b.hm : b.hm;
       const extra = '<label>日付<input type="date" name="date" value="' + esc(b.day) + '"></label>' +
         '<label>開始時刻<input type="time" name="time" step="300" value="' + esc(hm) + '"></label>' +
-        '<label>場所<select name="gymId">' + gyms.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === b.gymId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>';
-      const r = await ask({ title: '日時・場所を変えて承認', body: esc(b.name) + 'さんのご希望：' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) +
-        '<br>長さはご希望と同じです。確定連絡に「ご希望から変更」と書き添えて送ります。ジムは押さえましたか？',
-        extra, buttons: [{ label: 'この内容で承認する', value: 1 }] });
+        '<label>場所<select name="gymId">' + gyms.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === b.gymId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' +
+        (isMove ? '<label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="notify" value="1" checked style="width:auto;margin:0"> お客さんにSlackで変更を連絡する</label>' : '');
+      const r = await ask({
+        title: isMove ? '日時・場所を変更' : '日時・場所を変えて承認',
+        body: esc(b.name) + 'さん｜' + (isMove ? '現在：' : 'ご希望：') + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) +
+          (isMove ? '<br>長さはそのまま。回数券は動きません。ブースの予約は新しい時間で入れ直します。'
+                  : '<br>長さはご希望と同じです。確定連絡に「ご希望から変更」と書き添えて送ります。ジムは押さえましたか？'),
+        extra, buttons: [{ label: isMove ? 'この内容に変更する' : 'この内容で承認する', value: 1 }] });
       if (!r) return;
       const ch = { date: r.vals.date, time: r.vals.time, gymId: r.vals.gymId };
+      if (isMove) ch.notify = !!r.checked;
       if (!ch.date || !ch.time) { toast('⚠ 日付と時刻を入れてください'); return; }
+      const fn = isMove ? 'apiReschedule' : 'apiApprove';
       if (working) return;
       working = true;
       document.querySelectorAll('[data-act]').forEach((x) => (x.disabled = true));
       let msg = null, err = null;
-      try { msg = await call('apiApprove', ADMIN, id, ch); } catch (e) { err = String(e); }
+      try { msg = await call(fn, ADMIN, id, ch); } catch (e) { err = String(e); }
       working = false;
       document.querySelectorAll('[data-act]').forEach((x) => (x.disabled = false));
       if (err && err.indexOf('【重なり】') === 0) {
-        const r2 = await ask({ title: 'カレンダーの予定と重なっています', body: esc(err.replace('【重なり】', '')) + '<br>このまま承認しますか？',
-          buttons: [{ label: '重なっていても承認する', value: 1 }] });
-        if (r2) run('apiApprove', id, Object.assign(ch, { force: true }));
+        const r2 = await ask({ title: 'カレンダーの予定と重なっています', body: esc(err.replace('【重なり】', '')) + '<br>このまま進めますか？',
+          buttons: [{ label: '重なっていても進める', value: 1 }] });
+        if (r2) run(fn, id, Object.assign(ch, { force: true }));
         return;
       }
       if (err) { toast('⚠ ' + err, 7000); return; }
