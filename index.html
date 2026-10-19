@@ -184,6 +184,9 @@
   body:has(.bar.show #placePick button) main { padding-bottom:360px; }
   .bar { z-index:20; max-height:75vh; max-height:75dvh; overflow-y:auto; }
   #placePick:empty { display:none; }
+  /* 「優先」ラベル（お客さんごとの優先ジム） */
+  .gym .tag { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:6px; background:#E9F2EE; color:#345D4D; font-size:11px; font-weight:700; line-height:1.6; vertical-align:1px; }
+  .gym.on .tag { background:#ffffff26; color:#fff; }
 </style>
 </head>
 <body>
@@ -289,7 +292,8 @@
     } else {
       h += '<div class="muted" style="margin-bottom:8px">ジムを選んでください（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）</div><div class="gyms">';
       groups.forEach((g) => {
-        h += '<button class="gym' + (g.key === groupKey ? ' on' : '') + '" data-gym="' + esc(g.key) + '">' + esc(g.label) + '</button>';
+        const pref = g.gyms.some((x) => x.preferred) ? '<span class="tag">優先</span>' : '';
+        h += '<button class="gym' + (g.key === groupKey ? ' on' : '') + '" data-gym="' + esc(g.key) + '">' + esc(g.label) + pref + '</button>';
       });
       h += '</div><div id="slots"></div>';
     }
@@ -403,7 +407,7 @@
     const multi = picked.gyms.length > 1;
     $('selText').textContent = picked.day + ' ' + picked.label + '〜' + (gymId ? '（' + gymName(gymId) + '）' : '｜場所を選んでください');
     place.innerHTML = multi ? picked.gyms.map((id) =>
-      '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + '</button>').join('') : '';
+      '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + (view.gyms.some((x) => x.id === id && x.preferred) ? '<span class="tag">優先</span>' : '') + '</button>').join('') : '';
     place.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { gymId = b.getAttribute('data-place'); renderBar(); }));
     $('reqBtn').disabled = !gymId;
   }
