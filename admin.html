@@ -56,6 +56,17 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none !important; }
   .stale { font-size: 12px; color: var(--sub); background: #fff; border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; margin-bottom: 10px; }
+  /* まとめて承認 */
+  .card.pick { display: flex; gap: 12px; align-items: flex-start; }
+  .card.pick > .body { flex: 1; min-width: 0; }
+  .card.pick.on { border-color: var(--green); box-shadow: 0 0 0 1px var(--green) inset; background: #f6faf2; }
+  .chk { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -8px 0 0 -8px; cursor: pointer; }
+  .chk input, .allbar input { width: 24px; height: 24px; accent-color: var(--green); margin: 0; cursor: pointer; }
+  .allbar { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 4px; margin-bottom: 6px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .bulkbar { position: sticky; bottom: 0; margin: 12px -16px -48px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.96);
+    border-top: 1px solid var(--line); box-shadow: 0 -4px 16px rgba(0,0,0,.06); }
+  .bulkbar .btn { width: 100%; min-height: 48px; font-size: 16px; }
+  .modal ul.pl { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
   @media (max-width: 560px) { .hide-sm { display: none; } }
 </style>
 </head>
@@ -77,6 +88,7 @@
 <script>
   const ADMIN = new URLSearchParams(location.search).get('admin') || '';
   let data = null, tab = 'pending', working = false;
+  const sel = new Set(); // まとめて承認で選んだ予約ID
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -202,12 +214,26 @@
   }
 
   function renderPending() {
+    // 一覧から消えた予約は選択からも外す
+    const ids = new Set(data.pending.map((b) => b.id));
+    sel.forEach((id) => { if (!ids.has(id)) sel.delete(id); });
     if (!data.pending.length) { $('content').innerHTML = '<div class="empty">承認待ちの仮予約はありません。</div>'; return; }
-    $('content').innerHTML = '<p class="muted">ジムを押さえてから「承認」を押してください。承認すると回数券が1回減り、お客さんにSlackで確定連絡が届きます。</p>' +
-      data.pending.map((b) => bookingCard(b,
-        '<button class="btn" data-act="approve" data-id="' + esc(b.id) + '">承認する</button>' +
-        (data.gyms && b.day ? '<button class="btn sub" data-act="edit" data-id="' + esc(b.id) + '">日時・場所を変えて承認</button>' : '') +
-        '<button class="btn danger" data-act="reject" data-id="' + esc(b.id) + '">却下する</button>')).join('');
+    const multi = data.pending.length >= 2;
+    const all = multi && sel.size === data.pending.length;
+    $('content').innerHTML = '<p class="muted">ジムを押さえてから「承認」を押してください。承認すると回数券が1回減り、お客さんにSlackで確定連絡が届きます。' +
+      (multi ? 'チェックを付けると、まとめて承認できます。' : '') + '</p>' +
+      (multi ? '<label class="allbar"><input type="checkbox" data-pick="all"' + (all ? ' checked' : '') + '> すべて選択</label>' : '') +
+      data.pending.map((b) => {
+        const card = bookingCard(b,
+          '<button class="btn" data-act="approve" data-id="' + esc(b.id) + '">承認する</button>' +
+          (data.gyms && b.day ? '<button class="btn sub" data-act="edit" data-id="' + esc(b.id) + '">日時・場所を変えて承認</button>' : '') +
+          '<button class="btn danger" data-act="reject" data-id="' + esc(b.id) + '">却下する</button>');
+        if (!multi) return card;
+        const on = sel.has(b.id);
+        return card.replace('<div class="card">', '<div class="card pick' + (on ? ' on' : '') + '"><label class="chk" aria-label="選択"><input type="checkbox" data-pick="' + esc(b.id) + '"' + (on ? ' checked' : '') + '></label><div class="body">') + '</div>';
+      }).join('') +
+      (multi ? '<div class="bulkbar"><button class="btn" data-act="bulk"' + (sel.size ? '' : ' disabled') + '>' +
+        (sel.size ? '選んだ ' + sel.size + ' 件をまとめて承認' : '承認する予約にチェックを付けてください') + '</button></div>' : '');
   }
 
   function renderUpcoming() {
@@ -235,14 +261,14 @@
   async function run(fn, ...args) {
     if (working) return;
     working = true;
-    document.querySelectorAll('[data-act]').forEach((b) => (b.disabled = true));
+    document.querySelectorAll('[data-act],[data-pick]').forEach((b) => (b.disabled = true));
     try {
       const msg = await call(fn, ADMIN, ...args);
       toast(msg, 6000);
       await load();
     } catch (e) {
       toast('⚠ ' + e, 7000);
-      document.querySelectorAll('[data-act]').forEach((b) => (b.disabled = false));
+      document.querySelectorAll('[data-act],[data-pick]').forEach((b) => (b.disabled = false));
     } finally {
       working = false;
     }
@@ -257,6 +283,7 @@
     if (!el || working) return;
     const id = el.dataset.id, act = el.dataset.act;
 
+    if (act === 'bulk') { await bulkApprove(); return; }
     if (act === 'approve') {
       const b = find(data.pending, id);
       const r = await ask({ title: '承認しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>ジムは押さえましたか？',
@@ -334,6 +361,50 @@
       } catch (e) { working = false; toast('⚠ ' + e); }
     }
   });
+
+  // チェックの付け外し（画面を描き直さず、ボタン表示だけ更新）
+  document.addEventListener('change', (ev) => {
+    const el = ev.target.closest('[data-pick]');
+    if (!el || working || tab !== 'pending') return;
+    if (el.dataset.pick === 'all') { data.pending.forEach((b) => (el.checked ? sel.add(b.id) : sel.delete(b.id))); }
+    else if (el.checked) sel.add(el.dataset.pick); else sel.delete(el.dataset.pick);
+    renderPending();
+  });
+
+  /** 選んだ仮予約を1件ずつ順番に承認する（サーバー側は1件ずつの承認をそのまま使う） */
+  async function bulkApprove() {
+    const list = data.pending.filter((b) => sel.has(b.id));
+    if (!list.length) return;
+    // 同じお客さんで残回数より多く選んでいないか
+    const per = {};
+    list.forEach((b) => { const k = b.name; per[k] = per[k] || { n: 0, rem: Number(b.remaining) }; per[k].n++; });
+    const short = Object.keys(per).filter((k) => !isNaN(per[k].rem) && per[k].n > per[k].rem);
+    const r = await ask({
+      title: list.length + '件をまとめて承認しますか？',
+      body: 'ジムは押さえましたか？ お客さんには1件ごとにSlackで確定連絡が届きます。' +
+        (short.length ? '<div class="warn" style="margin:8px 0 0">' + short.map((k) => esc(k) + 'さんは残回数 ' + per[k].rem + '回に対して ' + per[k].n + '件選んでいます。足りない分は承認できません。').join('<br>') + '</div>' : ''),
+      extra: '<ul class="pl">' + list.map((b) => '<li>' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.name) + 'さん｜' + esc(b.gym) + '</li>').join('') + '</ul>',
+      buttons: [{ label: list.length + '件を承認する', value: 1 }] });
+    if (!r || working) return;
+    working = true;
+    document.querySelectorAll('[data-act],[data-pick]').forEach((x) => (x.disabled = true));
+    const ok = [], ng = [];
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      toast('承認中… ' + (i + 1) + ' / ' + list.length + '件目', 60000);
+      try { await call('apiApprove', ADMIN, b.id); ok.push(b); sel.delete(b.id); }
+      catch (e) { ng.push({ b, e: String(e) }); }
+    }
+    working = false;
+    toast(ng.length ? '⚠ ' + ok.length + '件承認、' + ng.length + '件は承認できませんでした' : list.length + '件を承認しました', 6000);
+    if (ng.length) {
+      ask({ title: ok.length + '件承認／' + ng.length + '件は未承認',
+        body: '下の予約は承認できませんでした。理由を確認して、1件ずつ対応してください。<br>（「送信結果を確認できませんでした」の場合、更新後に承認待ちから消えていれば承認済みです）',
+        extra: '<ul class="pl">' + ng.map((x) => '<li><b>' + esc(x.b.date) + ' ' + esc(x.b.time) + '｜' + esc(x.b.name) + 'さん</b><br><span class="muted">' + esc(x.e) + '</span></li>').join('') + '</ul>',
+        buttons: [] });
+    }
+    load();
+  }
 
   $('reload').addEventListener('click', load);
   load();
