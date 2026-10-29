@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font-size:14px}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>GlitteR 体験予約 見本版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Shippori+Mincho:wght@600;700&display=swap">
+<style>
+/* Layout: one column for the customer form (max 560px); admin = list beside detail from 760px, stacked on phones. Tokens measured from glitter-gym.com. */
+:root{
+  --bg:#FDFDFD; --surface:#FFFFFF; --soft:#F8F6F1; --sage:#EDF1EC; --line:#D8D2C7;
+  --fg:#2A2A2A; --muted:#6B655C; --accent:#3D5A4A; --accent-strong:#2A3F33; --on-accent:#FFFFFF;
+  --night:#1D3027; --on-night:#FFFFFF; --gold:#C6A56B; --bronze:#8A6F44;
+  --error:#A33A2E; --error-soft:#F8ECEA; --shadow:rgba(0,0,0,.12); --scrim:rgba(29,48,39,.55);
+  --font-display:'Shippori Mincho','Hiragino Mincho ProN','Yu Mincho',serif;
+  --font-body:'Noto Sans JP','Hiragino Sans','Yu Gothic',sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:16px;line-height:1.7}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);color:var(--fg);box-shadow:0 1px 4px var(--shadow)}
+.top-in{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-block:10px;max-width:1080px;margin:0 auto}
+.brand{display:flex;align-items:baseline;gap:8px}
+.brand b{font-family:var(--font-display);font-size:22px;letter-spacing:.02em;color:var(--night)}
+.brand span{font-size:10px;letter-spacing:.18em;color:var(--muted)}
+.seg{display:flex;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:3px;gap:3px}
+.seg button{min-height:40px;padding:0 14px;border:0;border-radius:3px;background:transparent;color:var(--fg);font-size:14px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:700}
+.proto{background:var(--soft);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted)}
+.proto p{margin:0 auto;max-width:1080px;padding-block:8px}
+.proto strong{color:var(--bronze)}
+main{display:block}
+.cust{max-width:560px;margin:0 auto;padding-block:0 40px}
+.hero{background:var(--soft);border-bottom:1px solid var(--line)}
+.hero-in{max-width:560px;margin:0 auto;padding-block:28px 22px;display:flex;flex-direction:column;gap:14px}
+.eyebrow{margin:0;font-family:var(--font-display);font-size:13px;font-weight:600;letter-spacing:.12em;color:var(--bronze)}
+h1,h2,h3{text-wrap:balance}
+.hero h1{margin:0;font-family:var(--font-display);font-size:26px;line-height:1.45}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
+.fact small{display:block;font-size:12px;color:var(--muted)}
+.fact b{font-size:18px;color:var(--accent-strong);font-variant-numeric:tabular-nums}
+.lead{margin:0;font-size:14px;color:var(--muted)}
+.lead strong{color:var(--fg)}
+.steps{display:flex;align-items:center;gap:8px;font-size:13px;padding-block:16px;color:var(--muted)}
+.steps .dot{width:24px;height:24px;border-radius:12px;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:12px;margin-right:6px}
+.steps .on{color:var(--accent-strong);font-weight:700}
+.steps .on .dot{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.steps .done .dot{background:var(--sage);border-color:var(--sage);color:var(--accent)}
+.steps i{flex:1;height:1px;background:var(--line)}
+form.f{display:flex;flex-direction:column;gap:28px}
+fieldset{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:18px;min-width:0}
+legend{padding:0 0 12px;font-family:var(--font-display);font-size:19px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field>label,.field>.lbl{font-size:15px;font-weight:500;display:flex;align-items:center;gap:8px}
+.req,.opt{font-size:11px;line-height:18px;padding:0 6px;border-radius:4px;font-weight:700}
+.req{color:var(--bronze);border:1px solid var(--bronze)}
+.opt{color:var(--muted);font-weight:500}
+input[type=text],input[type=tel],input[type=email],input[type=date],input[type=search],select,textarea{width:100%;min-height:48px;padding:0 14px;font-size:16px;background:var(--surface);border:1px solid var(--line);border-radius:4px}
+textarea{padding:12px 14px;line-height:1.6;resize:vertical;min-height:110px}
+.help{margin:0;font-size:13px;color:var(--muted)}
+.err{margin:0;font-size:14px;color:var(--error)}
+.invalid input,.invalid select,.invalid textarea,.slot.invalid{border-color:var(--error)}
+.radios{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.radios label{min-height:48px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);border-radius:4px;background:var(--surface);font-size:15px;cursor:pointer}
+.radios label:has(input:checked){border:2px solid var(--accent);background:var(--sage);font-weight:700;color:var(--accent-strong)}
+.radios input{accent-color:var(--accent);margin:0}
+.slot{border:1px solid var(--line);border-radius:4px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.slot.first{border:2px solid var(--accent)}
+.slot h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.span{margin:0;font-size:14px;color:var(--accent-strong);background:var(--sage);border-radius:4px;padding:6px 12px;font-variant-numeric:tabular-nums}
+.consent{min-height:56px;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--soft);border:1px solid var(--line);border-radius:4px;font-size:15px}
+.consent input{width:22px;height:22px;margin:0;accent-color:var(--accent);flex-shrink:0}
+.btn{min-height:52px;width:100%;border:0;border-radius:4px;background:var(--accent);color:var(--on-accent);font-size:16px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.btn:hover{background:var(--accent-strong)}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn2{min-height:48px;width:100%;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--fg);font-size:15px;cursor:pointer}
+.btn2:hover{border-color:var(--accent)}
+.btn-danger{min-height:48px;width:100%;border:1px solid var(--error);border-radius:4px;background:var(--surface);color:var(--error);font-size:15px;font-weight:700;cursor:pointer}
+.bar{margin-top:8px;display:flex;flex-direction:column;gap:10px}
+.summary{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--surface)}
+.summary h2{margin:0;padding:10px 16px;font-size:14px;background:var(--soft);border-bottom:1px solid var(--line);color:var(--accent-strong)}
+.summary dl{margin:0;padding:2px 16px}
+.summary dl>div{padding:10px 0;border-bottom:1px solid var(--sage)}
+.summary dl>div:last-child{border-bottom:0}
+dt{font-size:12px;color:var(--muted)}
+dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.note{margin:0;font-size:14px;background:var(--soft);border-radius:4px;padding:12px 14px;color:var(--muted)}
+.note strong{color:var(--fg)}
+.done{display:flex;flex-direction:column;gap:20px;padding-block:24px 0}
+.done .mark{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.done h1{margin:0;font-family:var(--font-display);font-size:23px;line-height:1.5}
+.ticket{border:1px solid var(--line);border-radius:4px;background:var(--soft);padding:16px}
+.ticket b{display:block;font-size:20px;letter-spacing:.06em;color:var(--accent-strong);font-variant-numeric:tabular-nums}
+.alert{border:1px solid var(--error);background:var(--error-soft);color:var(--fg);border-radius:4px;padding:12px 14px;font-size:14px}
+/* admin */
+.adm{max-width:1080px;margin:0 auto;padding-block:16px 40px}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.subtabs button{min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:4px;background:var(--surface);cursor:pointer;font-size:14px}
+.subtabs button[aria-pressed="true"]{background:var(--night);color:var(--on-night);border-color:var(--night);font-weight:700}
+.split{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:760px){.split{grid-template-columns:minmax(0,360px) minmax(0,1fr)}}
+.filters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:10px 0}
+.filters button{min-height:44px;border:1px solid var(--line);border-radius:4px;background:var(--surface);font-size:13px;cursor:pointer;padding:0 2px}
+.filters button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:700}
+.list{display:flex;flex-direction:column;gap:8px}
+.card{display:flex;flex-direction:column;gap:4px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:4px;text-align:left;cursor:pointer;width:100%}
+.card[aria-current="true"]{border:2px solid var(--accent)}
+.card .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card .nm{font-size:16px;font-weight:700}
+.card .sub{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.chip{font-size:12px;font-weight:700;border-radius:4px;padding:2px 8px;white-space:nowrap}
+.st-new{background:var(--sage);color:var(--accent-strong)}
+.st-adjusting{background:var(--soft);color:var(--bronze);border:1px solid var(--bronze)}
+.st-confirmed{background:var(--accent);color:var(--on-accent)}
+.st-cancelled{background:var(--error-soft);color:var(--error)}
+.st-closed{background:var(--soft);color:var(--muted)}
+.empty{padding:28px 16px;text-align:center;border:1px dashed var(--line);border-radius:4px;color:var(--muted);font-size:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel h2{margin:0;font-size:16px;color:var(--accent-strong)}
+.detail{display:flex;flex-direction:column;gap:14px;min-width:0}
+.dhead{display:flex;flex-direction:column;gap:2px}
+.dhead h2{margin:0;font-size:22px;color:var(--fg)}
+.pick{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:4px;cursor:pointer}
+.pick:has(input:checked){border:2px solid var(--accent);background:var(--sage)}
+.pick input{width:20px;height:20px;margin:3px 0 0;accent-color:var(--accent);flex-shrink:0}
+.pick .t{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+.ok{color:var(--accent-strong);font-weight:700;font-size:13px}
+.ng{color:var(--error);font-weight:700;font-size:13px}
+.hist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ev{display:flex;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:4px;background:var(--surface);align-items:center}
+.ev .tm{font-weight:700;font-variant-numeric:tabular-nums;min-width:108px}
+.ev .ttl{flex:1;min-width:0;font-size:14px}
+.ev.tentative{border-style:dashed;color:var(--muted)}
+.day{margin:14px 0 6px;font-size:14px;font-weight:700;color:var(--bronze)}
+.mini{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:4px;background:var(--surface);font-size:13px;cursor:pointer}
+.sheet-bg{position:fixed;inset:0;background:var(--scrim);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-width:560px;background:var(--bg);border-radius:12px 12px 0 0;padding:24px max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:12px;max-height:90%;overflow:auto}
+.sheet h2{margin:0;font-size:19px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--night);color:var(--on-night);padding:10px 16px;border-radius:4px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+footer.ft{background:var(--night);color:var(--on-night);font-size:12px}
+footer.ft div{max-width:1080px;margin:0 auto;padding-block:20px 28px}
+footer.ft b{font-family:var(--font-display);font-size:15px}
+footer.ft p{margin:4px 0 0;color:var(--gold)}
+</style>
+
+<header class="top"><div class="top-in wrap">
+  <div class="brand"><b>GlitteR</b><span>PERSONAL GYM</span></div>
+  <div class="seg" role="group" aria-label="画面の切り替え">
+    <button type="button" id="tabCust" aria-pressed="true">お客様画面</button>
+    <button type="button" id="tabAdm" aria-pressed="false">管理画面</button>
+  </div>
+</div></header>
+<div class="proto wrap"><p><strong>見本版</strong>　入力した内容はこの端末の中だけに保存され、店舗には届きません。カレンダーは「ブース2」の模擬データ、メールは送信せず記録だけ残します。実在の情報は入力しないでください。</p></div>
+
+<main>
+<section id="custView">
+  <div class="hero wrap"><div class="hero-in">
+    <p class="eyebrow">TRIAL SESSION</p>
+    <h1>体験パーソナルの<br>お申し込み</h1>
+    <div class="facts">
+      <div class="fact"><small>所要時間</small><b>90分</b></div>
+      <div class="fact"><small>体験料金</small><b>5,000円</b></div>
+    </div>
+    <p class="lead">ご希望の日時を第三希望までお知らせください。担当者が空き状況を確認し、ご連絡いたします。<strong>送信した時点では、予約は確定しません。</strong></p>
+  </div></div>
+  <div class="cust wrap">
+    <nav class="steps" aria-label="お申し込みの手順">
+      <span id="st1" class="on"><span class="dot">1</span>入力</span><i></i>
+      <span id="st2"><span class="dot">2</span>確認</span><i></i>
+      <span id="st3"><span class="dot">3</span>完了</span>
+    </nav>
+
+    <form class="f" id="form" novalidate>
+      <fieldset>
+        <legend>お客様情報</legend>
+        <div class="field" id="f-name"><label for="name">お名前<span class="req">必須</span></label>
+          <input id="name" type="text" autocomplete="name" placeholder="例）山田 花子" maxlength="50"><p class="err" hidden></p></div>
+        <div class="field" id="f-kana"><label for="kana">フリガナ<span class="req">必須</span></label>
+          <input id="kana" type="text" placeholder="例）ヤマダ ハナコ" maxlength="50"><p class="help">ひらがなで入力しても、カタカナに直します</p><p class="err" hidden></p></div>
+        <div class="field" id="f-gender"><span class="lbl" id="genderLbl">性別<span class="req">必須</span></span>
+          <div class="radios" role="radiogroup" aria-labelledby="genderLbl">
+            <label><input type="radio" name="gender" id="g1" value="女性">女性</label>
+            <label><input type="radio" name="gender" id="g2" value="男性">男性</label>
+            <label><input type="radio" name="gender" id="g3" value="回答しない">回答しない</label>
+          </div><p class="err" hidden></p></div>
+        <div class="field" id="f-tel"><label for="tel">電話番号<span class="req">必須</span></label>
+          <input id="tel" type="tel" inputmode="tel" autocomplete="tel" placeholder="例）09012345678"><p class="help">ハイフンはあってもなくても大丈夫です</p><p class="err" hidden></p></div>
+        <div class="field" id="f-email"><label for="email">メールアドレス<span class="req">必須</span></label>
+          <input id="email" type="email" autocomplete="email" placeholder="例）hanako@example.com"><p class="help">受付のお知らせをこのアドレスにお送りします</p><p class="err" hidden></p></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>ご希望の日時</legend>
+        <p class="help" id="rangeHelp" style="margin-top:-8px"></p>
+        <div id="slots"></div>
+      </fieldset>
+
+      <div class="field" id="f-comment"><label for="comment">ご質問・ご要望<span class="opt">任意</span></label>
+        <textarea id="comment" maxlength="1000" placeholder="例）運動経験がほとんどありません"></textarea>
+        <p class="help">お身体の状態については、当日のカウンセリングで詳しく伺います。</p><p class="err" hidden></p></div>
+
+      <div class="field" id="f-consent">
+        <label class="consent"><input type="checkbox" id="consent"><span><a href="https://glitter-gym.com/privacy-policy" target="_blank" rel="noopener" style="color:var(--accent-strong)">プライバシーポリシー</a>に同意する <span class="req">必須</span></span></label>
+        <p class="err" hidden></p></div>
+
+      <p class="alert" id="formErr" hidden role="alert">入力内容に確認が必要な項目があります。赤字の説明をご確認ください。</p>
+      <div class="bar"><button class="btn" type="submit">入力内容を確認する</button></div>
+    </form>
+
+    <section id="confirm" hidden>
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <h2 style="margin:0;font-family:var(--font-display);font-size:24px">入力内容のご確認</h2>
+        <div class="summary"><h2>ご希望の日時</h2><dl id="cSlots"></dl></div>
+        <div class="summary"><h2>お客様情報</h2><dl id="cInfo"></dl></div>
+        <p class="note">送信後、担当者が日程を確認してご連絡します。<strong>この時点では予約は確定しません。</strong></p>
+        <p class="alert" id="sendErr" hidden role="alert"></p>
+        <div class="bar">
+          <button class="btn" type="button" id="sendBtn">この内容で申し込む</button>
+          <button class="btn2" type="button" id="backBtn">入力画面に戻って修正する</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="done" hidden>
+      <div class="done">
+        <div class="mark">
+          <svg width="56" height="56" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="27" fill="var(--sage)" stroke="var(--accent)" stroke-width="2"/><path d="M17 29l7 7 15-16" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <h1>お申し込みを<br>受け付けました</h1>
+        </div>
+        <p style="margin:0;font-size:15px">体験パーソナルのお申し込みありがとうございます。ご希望の日時を確認のうえ、担当者よりご連絡いたします。現時点では予約は確定しておりません。</p>
+        <div class="ticket"><small style="font-size:13px;color:var(--muted)">申込番号</small><b id="doneNo"></b>
+          <p class="help" style="margin-top:4px">お問い合わせの際にお伝えください。受付のお知らせをメールでお送りします（試作版では送信しません）。</p></div>
+        <button class="btn2" type="button" id="againBtn">別の内容でもう一度試す</button>
+      </div>
+    </section>
+  </div>
+</section>
+
+<section id="admView" hidden>
+  <div class="adm wrap">
+    <div class="subtabs" role="group" aria-label="管理メニュー">
+      <button type="button" data-sub="apps" aria-pressed="true">申込</button>
+      <button type="button" data-sub="cal" aria-pressed="false">ブース2の予定</button>
+      <button type="button" data-sub="mail" aria-pressed="false">送信メール（記録）</button>
+      <button type="button" id="resetDemo" style="margin-left:auto">見本データに戻す</button>
+    </div>
+
+    <div id="subApps" class="split">
+      <div>
+        <label for="q" class="vh">申込を検索</label>
+        <input id="q" type="search" placeholder="氏名・フリガナ・電話・メール・申込番号">
+        <div class="filters" role="group" aria-label="状態で絞り込み" id="filters"></div>
+        <div class="list" id="appList"></div>
+      </div>
+      <div id="detail"></div>
+    </div>
+
+    <div id="subCal" hidden>
+      <div class="panel" style="margin-bottom:14px">
+        <h2>ブース2に予定を入れる（テスト用）</h2>
+        <p class="help">トレーナーのセッションやレンタルなど、体験以外の予定を想定しています。重なる時間は体験を確定できません（前後15分の準備時間を含めて判定）。</p>
+        <div class="grid3">
+          <div class="field"><label for="evDate" style="font-size:13px">日付</label><input id="evDate" type="date"></div>
+          <div class="field"><label for="evStart" style="font-size:13px">開始</label><select id="evStart"></select></div>
+          <div class="field"><label for="evEnd" style="font-size:13px">終了</label><select id="evEnd"></select></div>
+        </div>
+        <div class="field"><label for="evTitle" style="font-size:13px">予定名</label><input id="evTitle" type="text" maxlength="40" placeholder="例）トレーナーのセッション"></div>
+        <p class="err" id="evErr" hidden></p>
+        <button class="btn2" type="button" id="evAdd">予定を追加する</button>
+      </div>
+      <div id="calList"></div>
+    </div>
+
+    <div id="subMail" hidden><div class="list" id="mailList"></div></div>
+  </div>
+</section>
+</main>
+
+<footer class="ft"><div class="wrap"><b>パーソナルジム GlitteR</b><p>東京都港区南青山2-9-25 センチュリーホーム南青山B棟202</p></div></footer>
+
+<div id="sheetRoot"></div>
+<div id="toastRoot" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+// ---- settings (本番では管理設定から変更) ----
+const DURATION=90, STEP=30, FIRST='09:00', LAST_START='20:30', LEAD_DAYS=2, MAX_DAYS=60, BUFFER=15, CAPACITY=1;
+const WD=['日','月','火','水','木','金','土'];
+const STATUS={new:'新規受付',adjusting:'日程調整中',confirmed:'予約確定',cancelled:'キャンセル',closed:'対応終了'};
+const OUTCOME={'':'未記録',joined:'入会',considering:'検討中',declined:'見送り',no_show:'当日キャンセル'};
+const $=id=>document.getElementById(id);
+
+// ---- time helpers: 'YYYY-MM-DDTHH:MM' as Tokyo wall clock ----
+const pad=n=>String(n).padStart(2,'0');
+function jstNow(){const d=new Date(Date.now()+9*3600e3);return d}
+function todayStr(){const d=jstNow();return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())}
+function nowStamp(){const d=jstNow();return todayStr()+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())}
+function toMin(s){const y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10),h=+s.slice(11,13)||0,mi=+s.slice(14,16)||0;return Date.UTC(y,m-1,d,h,mi)/60000}
+function fromMin(n){const d=new Date(n*60000);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())}
+function addDays(dateStr,n){return fromMin(toMin(dateStr+'T00:00')+n*1440).slice(0,10)}
+function dayLabel(s){const y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10);return m+'/'+d+'（'+WD[new Date(Date.UTC(y,m-1,d)).getUTCDay()]+'）'}
+function dayLabelJa(s){const y=+s.slice(0,4),m=+s.slice(5,7),d=+s.slice(8,10);return m+'月'+d+'日（'+WD[new Date(Date.UTC(y,m-1,d)).getUTCDay()]+'）'}
+function slotLabel(a,b,ja){return (ja?dayLabelJa(a):dayLabel(a))+' '+a.slice(11,16)+'〜'+b.slice(11,16)}
+function timeOptions(first,last){const out=[];for(let t=toMin('2000-01-01T'+first);t<=toMin('2000-01-01T'+last);t+=STEP)out.push(fromMin(t).slice(11,16));return out}
+function stampLabel(s){return s?dayLabel(s)+' '+s.slice(11,16):''}
+
+// ---- tiny DOM helper (textContent only) ----
+function h(tag,attrs,...kids){const el=document.createElement(tag);if(attrs)for(const k in attrs){const v=attrs[k];if(v==null||v===false)continue;if(k==='class')el.className=v;else if(k==='text')el.textContent=v;else if(k.startsWith('on'))el.addEventListener(k.slice(2),v);else if(v===true)el.setAttribute(k,'');else el.setAttribute(k,v)}for(const c of kids.flat()){if(c==null||c===false)continue;el.append(c.nodeType?c:document.createTextNode(String(c)))}return el}
+function toast(msg){const r=$('toastRoot');r.replaceChildren(h('div',{class:'toast',text:msg}));clearTimeout(toast.t);toast.t=setTimeout(()=>r.replaceChildren(),3200)}
+
+// ---- capabilities ----
+let db=null,user=null,uid=null,isAdmin=false;
+let apps=[],events=[],inbox=[];
+let filter='new',query='',selected=null,sub='apps';
+
+// ================= お客様画面 =================
+const minDate=()=>addDays(todayStr(),LEAD_DAYS), maxDate=()=>addDays(todayStr(),MAX_DAYS);
+const TIMES=timeOptions(FIRST,LAST_START);
+function buildSlots(){
+  const box=$('slots');box.replaceChildren();
+  $('rangeHelp').textContent='第一希望のみ必須です。'+dayLabel(minDate())+'〜'+dayLabel(maxDate())+'の'+FIRST+'〜'+LAST_START+'開始で、30分刻みでお選びください。';
+  ['第一希望','第二希望','第三希望'].forEach((nm,i)=>{
+    const n=i+1;
+    const sel=h('select',{id:'t'+n,'aria-label':nm+'の開始時刻'},h('option',{value:''},'時刻を選ぶ'),TIMES.map(t=>h('option',{value:t},t+' 開始')));
+    const date=h('input',{type:'date',id:'d'+n,min:minDate(),max:maxDate(),'aria-label':nm+'の日付'});
+    const span=h('p',{class:'span',id:'s'+n,hidden:true});
+    const err=h('p',{class:'err',id:'e'+n,hidden:true,role:'alert'});
+    const card=h('div',{class:'slot'+(n===1?' first':''),id:'slot'+n},
+      h('h3',null,nm,n===1?h('span',{class:'req'},'必須'):h('span',{class:'opt'},'任意')),
+      h('div',{class:'pair'},date,sel),span,err);
+    const upd=()=>{const s=slotOf(n);span.hidden=!s;if(s)span.textContent=slotLabel(s.start,s.end)+'（90分）'};
+    date.addEventListener('change',upd);sel.addEventListener('change',upd);
+    box.append(card);
+  });
+}
+function slotOf(n){const d=$('d'+n).value,t=$('t'+n).value;if(!d||!t)return null;const start=d+'T'+t;return{start,end:fromMin(toMin(start)+DURATION)}}
+function setErr(id,msg){const f=$(id);if(!f)return;f.classList.toggle('invalid',!!msg);const e=f.querySelector('.err');if(e){e.hidden=!msg;e.textContent=msg||''}}
+function toKatakana(s){return s.replace(/[ぁ-ゖ]/g,c=>String.fromCharCode(c.charCodeAt(0)+0x60))}
+$('kana').addEventListener('blur',e=>{e.target.value=toKatakana(e.target.value)});
+
+function collect(){
+  const v={name:$('name').value.trim(),kana:toKatakana($('kana').value.trim()),gender:(document.querySelector('input[name=gender]:checked')||{}).value||'',
+    tel:$('tel').value.trim(),email:$('email').value.trim(),comment:$('comment').value.trim(),consent:$('consent').checked,prefs:[]};
+  $('kana').value=v.kana;
+  let ok=true;const req=(c,id,msg)=>{if(!c){setErr(id,msg);ok=false}else setErr(id,'')};
+  req(v.name&&v.name.length<=50,'f-name','お名前を入力してください');
+  req(/^[ァ-ヶー\s　]+$/.test(v.kana),'f-kana','フリガナをカタカナで入力してください');
+  req(v.gender,'f-gender','性別を選んでください');
+  const telDigits=v.tel.replace(/[‐－\-\s]/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0));
+  req(/^0\d{9,10}$/.test(telDigits),'f-tel','電話番号は0から始まる10〜11桁の数字で入力してください');
+  v.tel=telDigits;
+  req(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email),'f-email','メールアドレスの形式をご確認ください（例：hanako@example.com）');
+  req(v.consent,'f-consent','プライバシーポリシーへの同意が必要です');
+  req(v.comment.length<=1000,'f-comment','1,000文字以内で入力してください');
+  const lo=minDate(),hi=maxDate();
+  for(let n=1;n<=3;n++){
+    const d=$('d'+n).value,t=$('t'+n).value,card=$('slot'+n),err=$('e'+n);let msg='';
+    if(n===1&&(!d||!t))msg='第一希望の日付と時刻を選んでください';
+    else if((d&&!t)||(!d&&t))msg='日付と時刻の両方を選んでください';
+    else if(d&&(d<lo||d>hi))msg=dayLabel(lo)+'〜'+dayLabel(hi)+'の日付をお選びください';
+    if(!msg&&d&&t){const s=slotOf(n);
+      for(const p of v.prefs){if(toMin(s.start)<toMin(p.end)&&toMin(p.start)<toMin(s.end)){msg=['第一','第二'][v.prefs.indexOf(p)]+'希望（'+p.start.slice(11,16)+'〜'+p.end.slice(11,16)+'）と時間が重なっています。別の時間をお選びください';break}}
+      if(!msg)v.prefs.push(s);}
+    card.classList.toggle('invalid',!!msg);err.hidden=!msg;err.textContent=msg;if(msg)ok=false;
+  }
+  return ok?v:null;
+}
+let draft=null,draftId=null;
+function newId(){const d=jstNow();const r=Math.random().toString(36).slice(2,6).toUpperCase();return 'GT-'+String(d.getUTCFullYear()).slice(2)+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'-'+r}
+function showStep(n){$('form').hidden=n!==1;$('confirm').hidden=n!==2;$('done').hidden=n!==3;
+  ['st1','st2','st3'].forEach((id,i)=>{$(id).className=(i+1===n)?'on':(i+1<n?'done':'')});window.scrollTo({top:0})}
+$('form').addEventListener('submit',e=>{e.preventDefault();const v=collect();$('formErr').hidden=!!v;if(!v){const bad=document.querySelector('.invalid');if(bad)bad.scrollIntoView({block:'center'});return}
+  draft=v;draftId=draftId||newId();
+  $('cSlots').replaceChildren(...['第一希望','第二希望','第三希望'].map((nm,i)=>h('div',null,h('dt',null,nm),h('dd',{style:i===0?'font-weight:700':''},v.prefs[i]?slotLabel(v.prefs[i].start,v.prefs[i].end,true):'指定なし'))));
+  $('cInfo').replaceChildren(...[['お名前',v.name+'（'+v.kana+'）'],['性別',v.gender],['電話番号',v.tel],['メールアドレス',v.email],['ご質問・ご要望',v.comment||'なし']].map(([k,x])=>h('div',null,h('dt',null,k),h('dd',null,x))));
+  $('sendErr').hidden=true;showStep(2)});
+$('backBtn').addEventListener('click',()=>showStep(1));
+$('againBtn').addEventListener('click',()=>{$('form').reset();buildSlots();draft=null;draftId=null;showStep(1)});
+let sending=false;
+$('sendBtn').addEventListener('click',async()=>{
+  if(sending||!draft)return;sending=true;const btn=$('sendBtn');btn.disabled=true;btn.textContent='送信しています…';
+  try{
+    if(!db||!uid)throw{code:'nodb'};
+    const doc={id:draftId,created_at:nowStamp(),name:draft.name,kana:draft.kana,gender:draft.gender,tel:draft.tel,email:draft.email,comment:draft.comment,prefs:draft.prefs,consent_at:nowStamp(),policy_version:'公式サイト掲載版',source:'試作版'};
+    const write=async()=>{await db.doc('apps/'+uid+'/list/'+draftId).set(doc);await db.doc('inbox/'+draftId).set({appId:draftId,uid:uid,created_at:doc.created_at,processed:false})};
+    try{await write()}catch(e){if(e&&e.code==='unavailable'){await new Promise(r=>setTimeout(r,800+Math.random()*700));await write()}else throw e}
+    $('doneNo').textContent=draftId;showStep(3);draft=null;draftId=null;
+  }catch(e){
+    const msg=e&&e.code==='nodb'?'この端末では保存できませんでした。ブラウザの設定をご確認ください。':'通信がうまくいきませんでした。入力内容はそのまま残っています。少し待ってから、もう一度「この内容で申し込む」を押してください。';
+    const el=$('sendErr');el.textContent=msg;el.hidden=false;
+  }finally{sending=false;btn.disabled=false;btn.textContent='この内容で申し込む'}
+});
+
+// ================= 管理画面 =================
+function surname(a){return (a.name||'').split(/[\s　]/)[0]||a.name}
+function overlapping(start,end,excludeAppId){
+  const s=toMin(start)-BUFFER,e=toMin(end)+BUFFER;
+  return events.filter(ev=>ev.kind!=='tentative'&&ev.appId!==excludeAppId&&toMin(ev.start)<e&&s<toMin(ev.end));
+}
+function freeLabel(start,end,appId){
+  if(toMin(start)<toMin(nowStamp()))return{ok:false,text:'過去の日時です'};
+  const n=overlapping(start,end,appId).length;
+  return n<CAPACITY?{ok:true,text:'ブース2 空きあり'}:{ok:false,text:'ブース2 空きなし（'+n+'件の予定と重なる）'};
+}
+function hist(a,action){return (a.history||[]).concat([{at:nowStamp(),action:action}])}
+function mails(a,type){return (a.mails||[]).concat([{at:nowStamp(),type:type,to:type.includes('店舗')?'店舗':'お客様'}])}
+
+async function processInbox(){
+  if(!isAdmin)return;
+  for(const it of inbox){
+    if(it.processed||processInbox.busy.has(it.appId))continue;
+    processInbox.busy.add(it.appId);
+    try{
+      const exists=(await db.doc('applications/'+it.appId).get()).exists;
+      if(!exists){
+        const snap=await db.doc('apps/'+it.uid+'/list/'+it.appId).get();
+        if(!snap.exists){processInbox.busy.delete(it.appId);continue}
+        const c=snap.data();
+        const a={id:c.id,created_at:c.created_at,name:c.name,kana:c.kana,gender:c.gender,tel:c.tel,email:c.email,comment:c.comment||'',prefs:c.prefs||[],consent_at:c.consent_at,policy_version:c.policy_version,
+          status:'new',outcome:'',memo:'',confirmed_start:null,confirmed_end:null,mail_state:'sent',history:[{at:c.created_at,action:'申込を受付'}],mails:[]};
+        const p=a.prefs[0];
+        await db.doc('booth2/t-'+a.id).set({kind:'tentative',appId:a.id,start:p.start,end:p.end,title:'【仮受付】体験 '+a.id+' '+surname(a)+'様',note:'第二・第三希望：'+(a.prefs.slice(1).map(x=>slotLabel(x.start,x.end)).join(' / ')||'なし')});
+        a.history.push({at:nowStamp(),action:'仮受付の予定をブース2に登録（空き時間は占有しない）'});
+        a.mails=mails(a,'受付のお知らせ');a.mails=mails(a,'新規申込の通知（店舗宛）');
+        a.history.push({at:nowStamp(),action:'受付のお知らせ・店舗通知を送信（試作版は記録のみ）'});
+        await db.doc('applications/'+a.id).set(a);
+      }
+      await db.doc('inbox/'+it.appId).update({processed:true});
+    }catch(e){processInbox.busy.delete(it.appId)}
+  }
+}
+processInbox.busy=new Set();
+
+function renderFilters(){
+  const counts={};apps.forEach(a=>counts[a.status]=(counts[a.status]||0)+1);
+  const defs=[['new','新規'],['adjusting','調整中'],['confirmed','確定'],['cancelled','取消'],['all','すべて']];
+  $('filters').replaceChildren(...defs.map(([k,l])=>h('button',{type:'button','aria-pressed':String(filter===k),onclick:()=>{filter=k;renderAdmin()}},l+(k!=='all'&&counts[k]?' '+counts[k]:''))));
+}
+function visibleApps(){
+  const q=query.trim().toLowerCase();
+  return apps.filter(a=>filter==='all'||a.status===filter||(filter==='confirmed'&&a.status==='closed')).filter(a=>!q||[a.id,a.name,a.kana,a.tel,a.email].join(' ').toLowerCase().includes(q))
+    .sort((x,y)=>(y.created_at||'').localeCompare(x.created_at||''));
+}
+function renderList(){
+  const list=visibleApps();
+  if(!apps.length){$('appList').replaceChildren(h('div',{class:'empty'},'まだ申込はありません。上の「お客様画面」から試しに申し込むと、ここに届きます。'));return}
+  if(!list.length){$('appList').replaceChildren(h('div',{class:'empty'},'この条件の申込はありません'));return}
+  $('appList').replaceChildren(...list.map(a=>{
+    const when=a.confirmed_start?'確定　'+slotLabel(a.confirmed_start,a.confirmed_end):'第一希望　'+(a.prefs[0]?slotLabel(a.prefs[0].start,a.prefs[0].end):'');
+    return h('button',{type:'button',class:'card','aria-current':String(selected===a.id),onclick:()=>{selected=a.id;renderAdmin();if(window.innerWidth<760)$('detail').scrollIntoView({block:'start'})}},
+      h('span',{class:'row'},h('span',{class:'nm'},a.name+' 様'),h('span',{class:'chip st-'+a.status},STATUS[a.status])),
+      h('span',{style:'font-size:14px;font-variant-numeric:tabular-nums'},when),
+      h('span',{class:'sub'},a.id+' ・ 受付 '+stampLabel(a.created_at)+(a.mail_state==='failed'?' ・ メール未送信':'')));
+  }));
+}
+function renderDetail(){
+  const a=apps.find(x=>x.id===selected);const box=$('detail');
+  if(!a){box.replaceChildren(h('div',{class:'empty'},'左の一覧から申込を選ぶと、ここに詳細が出ます'));return}
+  const parts=[];
+  parts.push(h('div',{class:'dhead'},h('span',{class:'row',style:'display:flex;justify-content:space-between;gap:8px;align-items:center'},h('span',{class:'sub',style:'font-size:13px;color:var(--muted)'},a.id+' ・ 受付 '+stampLabel(a.created_at)),h('span',{class:'chip st-'+a.status},STATUS[a.status])),h('h2',null,a.name+' 様')));
+  if(a.status==='confirmed'||a.status==='closed'){
+    parts.push(h('div',{class:'panel'},h('h2',null,'確定した日時'),h('p',{style:'margin:0;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums'},slotLabel(a.confirmed_start,a.confirmed_end,true)),
+      h('div',{class:'field'},h('label',{for:'outcome',style:'font-size:13px'},'体験の結果'),h('select',{id:'outcome',onchange:e=>saveOutcome(a,e.target.value)},Object.keys(OUTCOME).map(k=>h('option',{value:k,selected:a.outcome===k},OUTCOME[k])))),
+      h('button',{class:'btn2',type:'button',onclick:()=>openReschedule(a)},'日時を変更する'),
+      a.status==='confirmed'?h('button',{class:'btn2',type:'button',onclick:()=>setStatus(a,'closed','対応終了にした')},'対応終了にする'):null));
+  }
+  if(a.status==='new'||a.status==='adjusting'){
+    const frees=a.prefs.map(p=>freeLabel(p.start,p.end,a.id));const firstOk=frees.findIndex(x=>x.ok);
+    const picks=a.prefs.map((p,i)=>{const f=frees[i];
+      return h('label',{class:'pick'},h('input',{type:'radio',name:'pick',value:String(i),checked:i===firstOk}),
+        h('span',{style:'display:flex;flex-direction:column'},h('span',{style:'font-size:12px;color:var(--muted)'},['第一','第二','第三'][i]+'希望'),h('span',{class:'t'},slotLabel(p.start,p.end)),h('span',{class:f.ok?'ok':'ng'},f.text)))});
+    parts.push(h('div',{class:'panel'},h('h2',null,'日時を選んで確定'),h('p',{class:'help'},'空き状況はブース2の最新の予定から表示（同時1件・前後15分の準備時間を含む）'),picks,
+      h('button',{class:'btn',type:'button',onclick:()=>{const r=document.querySelector('input[name=pick]:checked');if(!r){toast('確定する日時を選んでください');return}const p=a.prefs[+r.value];confirmSlot(a,p.start,p.end)}},'この日時で確定する'),
+      h('p',{class:'help',style:'text-align:center'},'確定するとブース2に予定が入り、お客様に確定メールを送ります'),
+      h('button',{class:'btn2',type:'button',onclick:()=>openReschedule(a)},'候補以外の日時で確定する')));
+  }
+  parts.push(h('div',{class:'panel'},h('h2',null,'お客様情報'),h('dl',{style:'margin:0'},
+    [['フリガナ・性別',a.kana+' ・ '+a.gender],['電話番号',a.tel],['メールアドレス',a.email],['ご質問・ご要望',a.comment||'なし'],['希望日時',a.prefs.map((p,i)=>['第一','第二','第三'][i]+'　'+slotLabel(p.start,p.end)).join('\n')]].map(([k,v])=>h('div',{style:'padding:6px 0;border-bottom:1px solid var(--sage)'},h('dt',null,k),h('dd',null,v))))));
+  const memo=h('textarea',{id:'memo',maxlength:'1000',placeholder:'例）電話で日程を相談中'});memo.value=a.memo||'';
+  parts.push(h('div',{class:'panel'},h('h2',null,'対応メモ'),h('label',{for:'memo',class:'vh'},'対応メモ'),memo,
+    h('div',{class:'grid2'},
+      a.status==='new'?h('button',{class:'mini',type:'button',onclick:()=>setStatus(a,'adjusting','日程調整中にした')},'日程調整中にする'):h('span'),
+      h('button',{class:'mini',type:'button',onclick:()=>saveMemo(a,memo.value)},'メモを保存'))));
+  parts.push(h('div',{class:'panel'},h('h2',null,'操作履歴'),h('ol',{class:'hist'},(a.history||[]).slice().reverse().map(x=>h('li',null,stampLabel(x.at)+'　'+x.action)))));
+  if(a.status!=='cancelled')parts.push(h('div',{id:'cancelBox'},h('button',{class:'btn-danger',type:'button',onclick:()=>askCancel(a)},'この申込をキャンセルにする')));
+  box.replaceChildren(h('div',{class:'detail'},parts));
+}
+function renderCal(){
+  const today=todayStr();
+  const list=events.filter(e=>e.end.slice(0,10)>=today).sort((x,y)=>x.start.localeCompare(y.start));
+  if(!list.length){$('calList').replaceChildren(h('div',{class:'empty'},'今日以降のブース2の予定はありません'));return}
+  const out=[];let day='';
+  for(const e of list){const d=e.start.slice(0,10);if(d!==day){day=d;out.push(h('p',{class:'day'},dayLabelJa(d)))}
+    const kindTxt=e.kind==='tentative'?'仮受付（空き時間は占有しない）':e.kind==='confirmed'?'体験確定':'既存の予定';
+    out.push(h('div',{class:'ev'+(e.kind==='tentative'?' tentative':'')},h('span',{class:'tm'},e.start.slice(11,16)+'〜'+e.end.slice(11,16)),
+      h('span',{class:'ttl'},h('span',{style:'display:block'},e.title),h('span',{style:'font-size:12px;color:var(--muted)'},kindTxt)),
+      e.kind==='external'?h('button',{class:'mini',type:'button','aria-label':e.title+'を削除',onclick:async()=>{try{await db.doc('booth2/'+e.id).delete();toast('予定を削除しました')}catch(x){toast('削除できませんでした。もう一度お試しください')}}},'削除'):null));}
+  $('calList').replaceChildren(...out);
+}
+function renderMail(){
+  const rows=[];apps.forEach(a=>(a.mails||[]).forEach(m=>rows.push({...m,app:a})));
+  rows.sort((x,y)=>y.at.localeCompare(x.at));
+  if(!rows.length){$('mailList').replaceChildren(h('div',{class:'empty'},'送信記録はまだありません'));return}
+  $('mailList').replaceChildren(...rows.map(r=>h('div',{class:'ev'},h('span',{class:'tm'},stampLabel(r.at)),h('span',{class:'ttl'},h('span',{style:'display:block'},r.type),h('span',{style:'font-size:12px;color:var(--muted)'},r.app.id+' ・ 宛先：'+(r.to==='店舗'?'店舗':r.app.name+' 様')+' ・ 試作版のため未送信')))));
+}
+function renderAdmin(){renderFilters();renderList();renderDetail();renderCal();renderMail()}
+
+async function saveMemo(a,v){try{await db.doc('applications/'+a.id).update({memo:v,history:hist(a,'メモを更新')});toast('メモを保存しました')}catch(e){toast('保存できませんでした。もう一度お試しください')}}
+async function saveOutcome(a,v){try{await db.doc('applications/'+a.id).update({outcome:v,history:hist(a,'体験の結果：'+OUTCOME[v])});toast('結果を記録しました')}catch(e){toast('記録できませんでした')}}
+async function setStatus(a,st,label){try{await db.doc('applications/'+a.id).update({status:st,history:hist(a,label)});toast(STATUS[st]+'にしました')}catch(e){toast('変更できませんでした。もう一度お試しください')}}
+function askCancel(a){
+  const box=$('cancelBox');
+  box.replaceChildren(h('div',{class:'panel',style:'border-color:var(--error)'},h('h2',{style:'color:var(--error)'},'キャンセルにしますか'),
+    h('p',{class:'help'},'ブース2の予定を消し、状態を「キャンセル」にします。'),
+    h('label',{class:'consent',style:'background:var(--surface)'},h('input',{type:'checkbox',id:'cxMail',checked:true}),'お客様にキャンセルのお知らせを送る'),
+    h('div',{class:'grid2'},h('button',{class:'btn2',type:'button',onclick:()=>renderDetail()},'やめる'),
+      h('button',{class:'btn-danger',type:'button',onclick:async()=>{const m=$('cxMail').checked;try{
+        await db.doc('booth2/t-'+a.id).delete();
+        let up={status:'cancelled',history:hist(a,'キャンセルにした（ブース2の予定を削除）')};if(m)up.mails=mails(a,'キャンセルのお知らせ');
+        await db.doc('applications/'+a.id).update(up);toast('キャンセルにしました')}catch(e){toast('処理できませんでした。もう一度お試しください')}}},'キャンセルにする'))));
+}
+function openReschedule(a){
+  const d=h('input',{type:'date',id:'rsD',min:todayStr()});const t=h('select',{id:'rsT'},TIMES.map(x=>h('option',{value:x},x+' 開始')));
+  const info=h('p',{class:'help',id:'rsInfo'});
+  const upd=()=>{if(!d.value){info.textContent='日付を選ぶと空き状況が出ます';return}const s=d.value+'T'+t.value,e=fromMin(toMin(s)+DURATION);const f=freeLabel(s,e,a.id);info.textContent=slotLabel(s,e)+'：'+f.text;info.style.color=f.ok?'var(--accent-strong)':'var(--error)'};
+  d.addEventListener('change',upd);t.addEventListener('change',upd);upd();
+  openSheet(h('h2',null,a.status==='confirmed'?'日時を変更する':'候補以外の日時で確定する'),
+    h('div',{class:'grid2'},h('div',{class:'field'},h('label',{for:'rsD',style:'font-size:13px'},'日付'),d),h('div',{class:'field'},h('label',{for:'rsT',style:'font-size:13px'},'開始時刻'),t)),info,
+    h('button',{class:'btn',type:'button',onclick:()=>{if(!d.value){toast('日付を選んでください');return}const s=d.value+'T'+t.value;closeSheet();confirmSlot(a,s,fromMin(toMin(s)+DURATION))}},'この日時で確定する'),
+    h('button',{class:'btn2',type:'button',onclick:closeSheet},'閉じる'));
+}
+function openSheet(...kids){const bg=h('div',{class:'sheet-bg',onclick:e=>{if(e.target===bg)closeSheet()}},h('section',{class:'sheet',role:'dialog','aria-modal':'true'},kids));$('sheetRoot').replaceChildren(bg);const f=bg.querySelector('button,select,input');if(f)f.focus()}
+function closeSheet(){$('sheetRoot').replaceChildren()}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('sheetRoot').firstChild)closeSheet()});
+
+let confirming=false;
+async function confirmSlot(a,start,end){
+  if(confirming)return;confirming=true;
+  try{
+    if(toMin(start)<toMin(nowStamp())){toast('過去の日時は確定できません');return}
+    const lease=await db.doc('locks/booth2').acquire({holder:uid||'admin',ttlMs:15000});
+    if(!lease.acquired){toast('他の管理者が確定の処理中です。数秒後にもう一度押してください');return}
+    const snap=await db.collection('booth2').get();
+    const fresh=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const s=toMin(start)-BUFFER,e=toMin(end)+BUFFER;
+    const hits=fresh.filter(ev=>ev.kind!=='tentative'&&ev.appId!==a.id&&toMin(ev.start)<e&&s<toMin(ev.end));
+    if(hits.length>=CAPACITY){
+      openSheet(h('h2',{style:'color:var(--error)'},'確定できませんでした'),
+        h('p',{style:'margin:0;font-size:15px'},slotLabel(start,end,true)+' は、確定ボタンを押した時点でブース2に予定が入っていました。予約は確定しておらず、お客様にもメールは送っていません。'),
+        h('div',{class:'summary'},h('h2',null,'重なっている予定（前後15分の準備時間を含む）'),h('dl',null,hits.map(x=>h('div',null,h('dt',null,x.start.slice(11,16)+'〜'+x.end.slice(11,16)),h('dd',null,x.title))))),
+        h('button',{class:'btn',type:'button',onclick:closeSheet},'別の日時を選び直す'),
+        a.status==='new'?h('button',{class:'btn2',type:'button',onclick:()=>{closeSheet();setStatus(a,'adjusting','重複のため日程調整中にした')}},'お客様に日程を相談する（日程調整中にする）'):null);
+      return;
+    }
+    const changed=a.status==='confirmed';
+    await db.doc('booth2/t-'+a.id).set({kind:'confirmed',appId:a.id,start,end,title:'【体験確定】'+a.id+' '+surname(a)+'様'});
+    await db.doc('applications/'+a.id).update({status:'confirmed',confirmed_start:start,confirmed_end:end,
+      history:hist(a,(changed?'日時を変更：':'予約を確定：')+slotLabel(start,end)+'（ブース2の予定を確定に更新）'),
+      mails:mails(a,changed?'日時変更のお知らせ':'予約確定のお知らせ'),mail_state:'sent'});
+    toast(changed?'日時を変更しました':'予約を確定しました');
+  }catch(e){toast('確定できませんでした。通信状態を確認して、もう一度お試しください')}
+  finally{confirming=false}
+}
+
+// ---- view switching ----
+function showView(v){$('custView').hidden=v!=='cust';$('admView').hidden=v!=='adm';$('tabCust').setAttribute('aria-pressed',String(v==='cust'));$('tabAdm').setAttribute('aria-pressed',String(v==='adm'));try{localStorage.setItem('glitterView',v)}catch(e){}}
+$('tabCust').addEventListener('click',()=>showView('cust'));
+$('tabAdm').addEventListener('click',()=>showView('adm'));
+document.querySelectorAll('[data-sub]').forEach(b=>b.addEventListener('click',()=>{sub=b.dataset.sub;document.querySelectorAll('[data-sub]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('subApps').hidden=sub!=='apps';$('subCal').hidden=sub!=='cal';$('subMail').hidden=sub!=='mail'}));
+$('q').addEventListener('input',e=>{query=e.target.value;renderList()});
+
+// test event form
+const ALL_T=timeOptions('07:00','23:00');
+$('evStart').replaceChildren(...ALL_T.map(x=>h('option',{value:x,selected:x==='10:00'},x)));
+$('evEnd').replaceChildren(...ALL_T.map(x=>h('option',{value:x,selected:x==='11:00'},x)));
+$('evAdd').addEventListener('click',async()=>{
+  const d=$('evDate').value,s=$('evStart').value,e=$('evEnd').value,t=$('evTitle').value.trim()||'予定';const err=$('evErr');
+  if(!d){err.textContent='日付を選んでください';err.hidden=false;return}
+  if(e<=s){err.textContent='終了は開始より後の時刻にしてください';err.hidden=false;return}
+  err.hidden=true;
+  try{await db.collection('booth2').doc('x-'+Date.now().toString(36)).set({kind:'external',start:d+'T'+s,end:d+'T'+e,title:t});$('evTitle').value='';toast('ブース2に予定を追加しました')}catch(x){err.textContent='追加できませんでした。もう一度お試しください';err.hidden=false}
+});
+
+// ---- boot (見本版：端末内だけで動く保存の仕組み) ----
+function makeLocalDb(){
+  const KEY='glitterDemoV1';
+  const clone=o=>JSON.parse(JSON.stringify(o));
+  const seed=()=>({
+    'booth2/x-seed1':{kind:'external',start:addDays(todayStr(),2)+'T10:00',end:addDays(todayStr(),2)+'T11:00',title:'トレーナーのセッション（例）'},
+    'booth2/x-seed2':{kind:'external',start:addDays(todayStr(),3)+'T18:00',end:addDays(todayStr(),3)+'T20:00',title:'ブースのレンタル予約（例）'},
+    'booth2/x-seed3':{kind:'external',start:addDays(todayStr(),9)+'T10:00',end:addDays(todayStr(),9)+'T11:00',title:'トレーナーのセッション（例）'},
+    'booth2/x-seed4':{kind:'external',start:addDays(todayStr(),11)+'T19:00',end:addDays(todayStr(),11)+'T20:30',title:'ブースのレンタル予約（例）'}});
+  let docs=null;try{docs=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+  if(!docs)docs=seed();
+  const subs=new Set();
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(docs))}catch(e){}};
+  const snapOf=p=>({id:p.split('/').pop(),exists:p in docs,data:()=>p in docs?clone(docs[p]):undefined});
+  const inColl=(c,p)=>p.startsWith(c+'/')&&!p.slice(c.length+1).includes('/');
+  const qs=(c,w)=>{const list=Object.keys(docs).filter(p=>inColl(c,p)&&(!w||docs[p][w.f]===w.v)).sort().map(snapOf);return{docs:list,size:list.length,empty:!list.length}};
+  const emit=()=>{save();setTimeout(()=>subs.forEach(s=>s.cb(qs(s.c,s.w))),0)};
+  const sub=(c,w,cb)=>{const s={c,w,cb};subs.add(s);setTimeout(()=>cb(qs(c,w)),0);return()=>subs.delete(s)};
+  const doc=p=>({get:async()=>snapOf(p),set:async d=>{docs[p]=clone(d);emit()},
+    update:async d=>{if(!(p in docs))throw{code:'invalid_argument'};docs[p]=Object.assign({},docs[p],clone(d));emit()},
+    delete:async()=>{delete docs[p];emit()},acquire:async()=>({acquired:true})});
+  const collection=c=>({doc:id=>doc(c+'/'+id),get:async()=>qs(c,null),onSnapshot:cb=>sub(c,null,cb),where:(f,op,v)=>({onSnapshot:cb=>sub(c,{f,v},cb)})});
+  return{doc,collection,reset:()=>{docs=seed();emit()}};
+}
+buildSlots();showStep(1);
+db=makeLocalDb();uid='demo';isAdmin=true;
+let v0='cust';try{v0=localStorage.getItem('glitterView')||'cust'}catch(e){}
+showView(v0==='adm'?'adm':'cust');
+db.collection('applications').onSnapshot(s=>{apps=s.docs.map(d=>d.data());if(!selected&&apps.length){const f=visibleApps()[0];if(f)selected=f.id}if(selected&&!apps.find(a=>a.id===selected))selected=null;renderAdmin()});
+db.collection('booth2').onSnapshot(s=>{events=s.docs.map(d=>({id:d.id,...d.data()}));renderAdmin()});
+db.collection('inbox').where('processed','==',false).onSnapshot(s=>{inbox=s.docs.map(d=>d.data());processInbox()});
+$('resetDemo').className='mini';
+$('resetDemo').addEventListener('click',()=>{db.reset();selected=null;processInbox.busy.clear();toast('見本データに戻しました')});
+renderAdmin();
+})();
+</script>
+
+</body>
+</html>
