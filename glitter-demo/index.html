@@ -50,6 +50,8 @@ h1,h2,h3{text-wrap:balance}
 .fact{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:10px 12px}
 .fact small{display:block;font-size:12px;color:var(--muted)}
 .fact b{font-size:18px;color:var(--accent-strong);font-variant-numeric:tabular-nums}
+.fact .was{display:block;font-size:12px;line-height:1.4;color:var(--muted);font-variant-numeric:tabular-nums}
+.fact .was s{text-decoration-thickness:1px}
 .lead{margin:0;font-size:14px;color:var(--muted)}
 .lead strong{color:var(--fg)}
 .steps{display:flex;align-items:center;gap:8px;font-size:13px;padding-block:16px;color:var(--muted)}
@@ -174,7 +176,7 @@ footer.ft p{margin:4px 0 0;color:var(--gold)}
     <h1>体験パーソナルの<br>お申し込み</h1>
     <div class="facts">
       <div class="fact"><small>所要時間</small><b>90分</b></div>
-      <div class="fact"><small>体験料金</small><b>5,000円</b></div>
+      <div class="fact"><small>体験料金</small><span class="was">通常 <s>5,000円</s></span><b>無料</b></div>
     </div>
     <p class="lead">ご希望の日時を第三希望までお知らせください。担当者が空き状況を確認し、ご連絡いたします。<strong>送信した時点では、予約は確定しません。</strong></p>
   </div></div>
@@ -305,6 +307,7 @@ const WD=['日','月','火','水','木','金','土'];
 const STATUS={new:'新規受付',adjusting:'日程調整中',confirmed:'予約確定',cancelled:'キャンセル',closed:'対応終了'};
 const OUTCOME={'':'未記録',joined:'入会',considering:'検討中',declined:'見送り',no_show:'当日キャンセル'};
 const $=id=>document.getElementById(id);
+const SOURCE=(()=>{try{const p=new URLSearchParams(location.search).get('from');return p==='line'?'LINE公式':p==='hp'?'ホームページ':'直接'}catch(e){return '直接'}})();
 
 // ---- time helpers: 'YYYY-MM-DDTHH:MM' as Tokyo wall clock ----
 const pad=n=>String(n).padStart(2,'0');
@@ -397,7 +400,7 @@ $('sendBtn').addEventListener('click',async()=>{
   if(sending||!draft)return;sending=true;const btn=$('sendBtn');btn.disabled=true;btn.textContent='送信しています…';
   try{
     if(!db||!uid)throw{code:'nodb'};
-    const doc={id:draftId,created_at:nowStamp(),name:draft.name,kana:draft.kana,gender:draft.gender,tel:draft.tel,email:draft.email,comment:draft.comment,prefs:draft.prefs,consent_at:nowStamp(),policy_version:'公式サイト掲載版',source:'試作版'};
+    const doc={id:draftId,created_at:nowStamp(),name:draft.name,kana:draft.kana,gender:draft.gender,tel:draft.tel,email:draft.email,comment:draft.comment,prefs:draft.prefs,consent_at:nowStamp(),policy_version:'公式サイト掲載版',source:SOURCE};
     const write=async()=>{await db.doc('apps/'+uid+'/list/'+draftId).set(doc);await db.doc('inbox/'+draftId).set({appId:draftId,uid:uid,created_at:doc.created_at,processed:false})};
     try{await write()}catch(e){if(e&&e.code==='unavailable'){await new Promise(r=>setTimeout(r,800+Math.random()*700));await write()}else throw e}
     $('doneNo').textContent=draftId;showStep(3);draft=null;draftId=null;
@@ -432,7 +435,7 @@ async function processInbox(){
         const snap=await db.doc('apps/'+it.uid+'/list/'+it.appId).get();
         if(!snap.exists){processInbox.busy.delete(it.appId);continue}
         const c=snap.data();
-        const a={id:c.id,created_at:c.created_at,name:c.name,kana:c.kana,gender:c.gender,tel:c.tel,email:c.email,comment:c.comment||'',prefs:c.prefs||[],consent_at:c.consent_at,policy_version:c.policy_version,
+        const a={id:c.id,created_at:c.created_at,name:c.name,kana:c.kana,gender:c.gender,tel:c.tel,email:c.email,comment:c.comment||'',prefs:c.prefs||[],consent_at:c.consent_at,policy_version:c.policy_version,source:c.source||'直接',
           status:'new',outcome:'',memo:'',confirmed_start:null,confirmed_end:null,mail_state:'sent',history:[{at:c.created_at,action:'申込を受付'}],mails:[]};
         const p=a.prefs[0];
         await db.doc('booth2/t-'+a.id).set({kind:'tentative',appId:a.id,start:p.start,end:p.end,title:'【仮受付】体験 '+a.id+' '+surname(a)+'様',note:'第二・第三希望：'+(a.prefs.slice(1).map(x=>slotLabel(x.start,x.end)).join(' / ')||'なし')});
@@ -466,7 +469,7 @@ function renderList(){
     return h('button',{type:'button',class:'card','aria-current':String(selected===a.id),onclick:()=>{selected=a.id;renderAdmin();if(window.innerWidth<760)$('detail').scrollIntoView({block:'start'})}},
       h('span',{class:'row'},h('span',{class:'nm'},a.name+' 様'),h('span',{class:'chip st-'+a.status},STATUS[a.status])),
       h('span',{style:'font-size:14px;font-variant-numeric:tabular-nums'},when),
-      h('span',{class:'sub'},a.id+' ・ 受付 '+stampLabel(a.created_at)+(a.mail_state==='failed'?' ・ メール未送信':'')));
+      h('span',{class:'sub'},a.id+' ・ '+(a.source||'直接')+' ・ 受付 '+stampLabel(a.created_at)+(a.mail_state==='failed'?' ・ メール未送信':'')));
   }));
 }
 function renderDetail(){
@@ -491,7 +494,7 @@ function renderDetail(){
       h('button',{class:'btn2',type:'button',onclick:()=>openReschedule(a)},'候補以外の日時で確定する')));
   }
   parts.push(h('div',{class:'panel'},h('h2',null,'お客様情報'),h('dl',{style:'margin:0'},
-    [['フリガナ・性別',a.kana+' ・ '+a.gender],['電話番号',a.tel],['メールアドレス',a.email],['ご質問・ご要望',a.comment||'なし'],['希望日時',a.prefs.map((p,i)=>['第一','第二','第三'][i]+'　'+slotLabel(p.start,p.end)).join('\n')]].map(([k,v])=>h('div',{style:'padding:6px 0;border-bottom:1px solid var(--sage)'},h('dt',null,k),h('dd',null,v))))));
+    [['申込元',a.source||'直接'],['フリガナ・性別',a.kana+' ・ '+a.gender],['電話番号',a.tel],['メールアドレス',a.email],['ご質問・ご要望',a.comment||'なし'],['希望日時',a.prefs.map((p,i)=>['第一','第二','第三'][i]+'　'+slotLabel(p.start,p.end)).join('\n')]].map(([k,v])=>h('div',{style:'padding:6px 0;border-bottom:1px solid var(--sage)'},h('dt',null,k),h('dd',null,v))))));
   const memo=h('textarea',{id:'memo',maxlength:'1000',placeholder:'例）電話で日程を相談中'});memo.value=a.memo||'';
   parts.push(h('div',{class:'panel'},h('h2',null,'対応メモ'),h('label',{for:'memo',class:'vh'},'対応メモ'),memo,
     h('div',{class:'grid2'},
