@@ -171,7 +171,7 @@ footer.ft p{margin:4px 0 0;color:var(--gold)}
 
 <main>
 <section id="custView">
-  <div class="hero wrap"><div class="hero-in">
+  <div class="hero wrap" id="hero"><div class="hero-in">
     <p class="eyebrow">TRIAL SESSION</p>
     <h1>体験パーソナルの<br>お申し込み</h1>
     <div class="facts">
@@ -217,7 +217,7 @@ footer.ft p{margin:4px 0 0;color:var(--gold)}
         <p class="help">お身体の状態については、当日のカウンセリングで詳しく伺います。</p><p class="err" hidden></p></div>
 
       <div class="field" id="f-consent">
-        <label class="consent"><input type="checkbox" id="consent"><span><a href="https://glitter-gym.com/privacy-policy" target="_blank" rel="noopener" style="color:var(--accent-strong)">プライバシーポリシー</a>に同意する <span class="req">必須</span></span></label>
+        <label class="consent"><input type="checkbox" id="consent" aria-label="プライバシーポリシーに同意する"><span><a href="https://glitter-gym.com/privacy-policy" target="_blank" rel="noopener" style="color:var(--accent-strong)">プライバシーポリシー</a>に同意する <span class="req">必須</span></span></label>
         <p class="err" hidden></p></div>
 
       <p class="alert" id="formErr" hidden role="alert">入力内容に確認が必要な項目があります。赤字の説明をご確認ください。</p>
@@ -386,7 +386,7 @@ function collect(){
 }
 let draft=null,draftId=null;
 function newId(){const d=jstNow();const r=Math.random().toString(36).slice(2,6).toUpperCase();return 'GT-'+String(d.getUTCFullYear()).slice(2)+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'-'+r}
-function showStep(n){$('form').hidden=n!==1;$('confirm').hidden=n!==2;$('done').hidden=n!==3;
+function showStep(n){$('hero').hidden=n!==1;$('form').hidden=n!==1;$('confirm').hidden=n!==2;$('done').hidden=n!==3;
   ['st1','st2','st3'].forEach((id,i)=>{$(id).className=(i+1===n)?'on':(i+1<n?'done':'')});window.scrollTo({top:0})}
 $('form').addEventListener('submit',e=>{e.preventDefault();const v=collect();$('formErr').hidden=!!v;if(!v){const bad=document.querySelector('.invalid');if(bad)bad.scrollIntoView({block:'center'});return}
   draft=v;draftId=draftId||newId();
