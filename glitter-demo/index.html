@@ -435,6 +435,14 @@ async function processInbox(){
         const snap=await db.doc('apps/'+it.uid+'/list/'+it.appId).get();
         if(!snap.exists){processInbox.busy.delete(it.appId);continue}
         const c=snap.data();
+        // 同一申込の除外：同じメール＋同じ第一希望が10分以内に届いていれば、新しい方は登録しない
+        const all=(await db.collection('applications').get()).docs.map(d=>d.data());
+        const twin=all.find(x=>x.status!=='cancelled'&&(x.email||'').toLowerCase()===(c.email||'').toLowerCase()&&x.prefs&&x.prefs[0]&&c.prefs&&c.prefs[0]&&x.prefs[0].start===c.prefs[0].start&&Math.abs(toMin(x.created_at)-toMin(c.created_at))<=10);
+        if(twin){
+          await db.doc('applications/'+twin.id).update({history:hist(twin,'同じ内容の申込（'+c.id+'）が届いたため重複として除外')});
+          await db.doc('inbox/'+it.appId).update({processed:true,duplicateOf:twin.id});
+          continue;
+        }
         const a={id:c.id,created_at:c.created_at,name:c.name,kana:c.kana,gender:c.gender,tel:c.tel,email:c.email,comment:c.comment||'',prefs:c.prefs||[],consent_at:c.consent_at,policy_version:c.policy_version,source:c.source||'直接',
           status:'new',outcome:'',memo:'',confirmed_start:null,confirmed_end:null,mail_state:'sent',history:[{at:c.created_at,action:'申込を受付'}],mails:[]};
         const p=a.prefs[0];
