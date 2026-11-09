@@ -42,6 +42,33 @@
   .login button:disabled { opacity:.5; }
   .linkbtn { background:none; border:0; color:var(--sub); font-size:13px; text-decoration:underline; min-height:44px; padding:0 4px; }
   .foot { text-align:center; margin-top:8px; }
+  .tabs { position:sticky; top:64px; z-index:1; display:flex; gap:6px; padding:6px 12px 8px; background:var(--bg); }
+  .tabs button { flex:1; min-height:44px; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:10px; font-size:15px; }
+  .tabs button[aria-selected="true"] { background:var(--ink); color:#fff; border-color:var(--ink); font-weight:600; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding:2px 0 6px; }
+  .chips button { flex:0 0 auto; min-height:40px; padding:0 14px; border:1px solid var(--line); background:#fff; border-radius:20px; font-size:14px; color:var(--ink); }
+  .chips button[aria-pressed="true"] { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .list { margin:0; padding:0; list-style:none; }
+  .list li { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line); align-items:baseline; }
+  .list li:first-child { border-top:0; }
+  .list .amt { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+  .list .sub { display:block; font-size:12px; color:var(--sub); }
+  .total { display:flex; justify-content:space-between; padding-top:10px; border-top:2px solid var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; border:1px solid currentColor; margin-left:6px; vertical-align:1px; }
+  .tag.approx { color:var(--warn); }
+  .member h3 { font-size:16px; margin:0 0 2px; }
+  .member .meta { font-size:13px; color:var(--sub); }
+  .member .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin-top:8px; font-size:14px; }
+  .member .kv dt { color:var(--sub); }
+  .member .kv dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+  .st-ok { color:var(--accent); font-weight:600; }
+  .st-late { color:#a3271c; font-weight:600; }
+  .st-wait { color:var(--sub); font-weight:600; }
+  .chart { position:relative; margin-top:8px; }
+  .chart svg { display:block; width:100%; height:auto; overflow:visible; }
+  .chart .tip { position:absolute; pointer-events:none; background:var(--ink); color:#fff; font-size:12px; padding:4px 8px; border-radius:6px; white-space:nowrap; transform:translate(-50%,-110%); display:none; }
+  .kpis { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+  .kpis div { flex:1 1 0; min-width:120px; }
   .loading { text-align:center; color:var(--sub); padding:40px 0; }
 </style>
 </head>
@@ -53,6 +80,7 @@
   </div>
   <button id="refresh" type="button" hidden>更新</button>
 </header>
+<nav class="tabs" id="tabs" hidden role="tablist"><button type="button" role="tab" data-tab="sum" aria-selected="true">概要</button><button type="button" role="tab" data-tab="rev" aria-selected="false">売上</button><button type="button" role="tab" data-tab="mem" aria-selected="false">会員</button></nav>
 <main id="main"><div class="loading">読み込み中…</div></main>
 
 <script>
@@ -67,24 +95,47 @@
   function val(x, f) { var t = f(x.value); return t === null ? '<span class="na">未取得</span>' : esc(t); }
   function monthJa(ym) { return Number(ym.slice(5, 7)) + '月'; }
 
+  var tab = 'sum', lastData = null, revMonth = null;
+  function setTab(t) { tab = t; Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-selected', b.getAttribute('data-tab') === t ? 'true' : 'false'); }); render(lastData); window.scrollTo(0, 0); }
+  Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.addEventListener('click', function () { setTab(b.getAttribute('data-tab')); }); });
+  function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(1) + '%' : null; }
+
   function render(d) {
+    lastData = d;
     var main = document.getElementById('main');
     if (!d || d.empty) {
       main.innerHTML = '<div class="msg info">まだ集計されていません。「更新」を押してください。</div>';
       document.getElementById('stamp').textContent = '未集計';
       return;
     }
+    document.getElementById('tabs').hidden = false;
     document.getElementById('stamp').textContent = d.stamp + ' 時点';
     var h = '';
     if (d.lastLog && d.lastLog.result !== 'OK') {
       h += '<div class="msg err">前回の更新で読めなかったデータがあります：' + esc(d.lastLog.message) + '</div>';
     }
+    if (tab === 'rev') h += renderRevenue(d);
+    else if (tab === 'mem') h += renderMembers(d);
+    else h += renderSummary(d);
+    h += '<div class="src">出どころ：請求ログ／請求マスタ／Googleカレンダー（どれも読むだけ）</div>';
+    h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
+    main.innerHTML = h;
+    document.getElementById('logout').addEventListener('click', logout);
+    if (tab === 'sum') bindChart(d);
+    Array.prototype.forEach.call(document.querySelectorAll('[data-month]'), function (b) { b.addEventListener('click', function () { revMonth = b.getAttribute('data-month'); render(lastData); }); });
+  }
 
+  function renderSummary(d) {
+    var h = '';
     // 売上
     var r = d.revenue;
     h += '<section class="card"><div class="label">売上（請求ベース・対象月で月割り）</div><div class="row">' +
       '<div class="col"><div class="label">今月（' + monthJa(d.current) + '）</div><div class="big">' + val(r.cur, yen) + '</div></div>' +
       '<div class="col"><div class="label">先月（' + monthJa(d.previous) + '）</div><div class="mid">' + val(r.prev, yen) + '</div></div></div>';
+    h += '<div class="kpis"><div><div class="label">前月比</div><div class="mid">' + val(d.growth || {}, pct) + '</div></div>' +
+      '<div><div class="label">' + esc(d.current.slice(0, 4)) + '年の累計</div><div class="mid">' + val(d.annual || {}, yen) + '</div></div></div>';
+    if (d.annual && d.annual.state === '要確認' && d.annual.note) h += '<div class="note">累計：' + esc(d.annual.note) + '</div>';
+    if (d.growth && d.growth.note) h += '<div class="note">前月比：' + esc(d.growth.note) + '</div>';
     [['今月', r.unsentCur], ['先月', r.unsentPrev]].forEach(function (u) {
       if (typeof u[1].value === 'number' && u[1].value > 0) h += '<div class="warn">' + u[0] + '発行で未送付の請求：' + esc(yen(u[1].value)) + '（売上に入れていません）</div>';
     });
@@ -94,16 +145,20 @@
     h += '<div class="note">2026/10/20以降に発行した請求だけを集計しています。それより前に出した先払いの請求は含まないため、2026年10〜12月は実際より少なく出ます。</div>' +
       '<div class="note">出どころ：請求ログ</div></section>';
 
+    // 推移グラフ
+    h += '<section class="card"><div class="label">月ごとの売上（直近6か月）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
+      '<div class="note">棒をタップすると金額が出ます。点線は未取得の月（請求ログより前）。</div></section>';
+
     // 会員
     var m = d.members;
     h += '<section class="card"><div class="label">会員（請求マスタの有効）</div><div class="big">' + val(m, function (v) { return num(v, '名'); }) + '</div>';
     d.goals.forEach(function (g) {
       var target = Number((String(g.label).match(/（(\d+)名）/) || [])[1]);
       var cur = typeof m.value === 'number' ? m.value : null;
-      var pct = cur !== null && target ? Math.min(100, Math.round(cur / target * 100)) : 0;
+      var p = cur !== null && target ? Math.min(100, Math.round(cur / target * 100)) : 0;
       h += '<div class="goal"><div class="row"><div class="col">' + esc(g.label) + '</div><div><b>' +
         (typeof g.value === 'number' ? (g.value === 0 ? '達成' : 'あと' + g.value + '名') : '<span class="na">未取得</span>') +
-        '</b></div></div><div class="bar" role="img" aria-label="' + pct + '%"><span style="width:' + pct + '%"></span></div></div>';
+        '</b></div></div><div class="bar" role="img" aria-label="' + p + '%"><span style="width:' + p + '%"></span></div></div>';
     });
     h += '<div class="note">出どころ：請求マスタ（毎朝の記録）</div></section>';
 
@@ -114,20 +169,102 @@
       (typeof s.done.value === 'number' ? '<div class="note">実施済 ' + s.done.value + '回 ／ 予定 ' + s.plan.value + '回</div>' : '') + '</div>' +
       '<div class="col"><div class="label">先月</div><div class="mid">' + val(s.prev, function (v) { return num(v, '回'); }) + '</div></div></div>';
     var shown = s.places.filter(function (p) { return typeof p.value === 'number' && p.value > 0; });
-    if (shown.length) {
-      h += '<div class="places">' + shown.map(function (p) { return '<div>' + esc(p.label) + '</div><div>' + p.value + '回</div>'; }).join('') + '</div>';
-    }
+    if (shown.length) h += '<div class="places">' + shown.map(function (p) { return '<div>' + esc(p.label) + '</div><div>' + p.value + '回</div>'; }).join('') + '</div>';
     h += '<div class="note">出どころ：Googleカレンダー（予定名に「PT」を含む予定）</div></section>';
 
-    // 未取得の項目
     h += '<section class="card"><div class="row"><div class="col">新規</div><div>' + val(d.newMembers, function (v) { return num(v, '名'); }) + '</div></div>' +
       '<div class="row"><div class="col">退会</div><div>' + val(d.left, function (v) { return num(v, '名'); }) + '</div></div>' +
       '<div class="row"><div class="col">体験からの申込率</div><div>' + val(d.trialRate, function (v) { return num(v, '%'); }) + '</div></div></section>';
+    return h;
+  }
 
-    h += '<div class="src">出どころ：請求ログ／請求マスタ／Googleカレンダー（どれも読むだけ）</div>';
-    h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
-    main.innerHTML = h;
-    document.getElementById('logout').addEventListener('click', logout);
+  // 1系列の棒グラフ（凡例なし：見出しが系列名）。最新月だけ数値を直接表示、他はタップで表示
+  function chartSvg(trend) {
+    var W = 340, H = 170, L = 8, R = 8, T = 22, B = 26;
+    var vals = trend.map(function (t) { return typeof t.value === 'number' ? t.value : null; });
+    var max = Math.max.apply(null, vals.filter(function (v) { return v !== null; }).concat([1]));
+    var step = Math.pow(10, Math.floor(Math.log(max) / Math.LN10)); var top = Math.ceil(max / step) * step; if (top / step < 3) top = Math.ceil(max / (step / 2)) * (step / 2);
+    var n = trend.length || 1, slot = (W - L - R) / n, bw = Math.min(28, slot - 10);
+    var y = function (v) { return T + (H - T - B) * (1 - v / top); };
+    var g = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top / 2) + '" y2="' + y(top / 2) + '" stroke="#ece9e3" stroke-width="1"/>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top) + '" y2="' + y(top) + '" stroke="#ece9e3" stroke-width="1"/>' +
+      '<text x="' + (W - R) + '" y="' + (y(top) - 4) + '" text-anchor="end" font-size="10" fill="#6b6f76">' + (top >= 10000 ? (top / 10000) + '万円' : top + '円') + '</text>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#cfcac2" stroke-width="1"/>';
+    trend.forEach(function (t, i) {
+      var cx = L + slot * i + slot / 2, x = cx - bw / 2, v = vals[i];
+      if (v === null) {
+        g += '<rect x="' + x + '" y="' + (y(0) - 14) + '" width="' + bw + '" height="14" rx="4" fill="none" stroke="#b9b4ab" stroke-dasharray="3 3"/>';
+      } else {
+        var yy = y(v), hgt = Math.max(2, y(0) - yy), r = Math.min(4, hgt / 2);
+        g += '<path d="M' + x + ',' + y(0) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + y(0) + 'Z" fill="' + (i === n - 1 ? '#1f6f5c' : '#7fae9f') + '"/>';
+        if (i === n - 1) g += '<text x="' + cx + '" y="' + (yy - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + (v / 10000).toFixed(1) + '万</text>';
+      }
+      g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#6b6f76">' + Number(t.month.slice(5, 7)) + '月</text>';
+      g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>';
+    });
+    var desc = trend.map(function (t, i) { return Number(t.month.slice(5, 7)) + '月 ' + (vals[i] === null ? '未取得' : vals[i] + '円'); }).join('、');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="月ごとの売上：' + esc(desc) + '">' + g + '</svg>';
+  }
+
+  function bindChart(d) {
+    var box = document.getElementById('chart'), tip = document.getElementById('tip');
+    if (!box) return;
+    Array.prototype.forEach.call(box.querySelectorAll('.hit'), function (el) {
+      var show = function () {
+        var t = d.trend[Number(el.getAttribute('data-i'))];
+        tip.textContent = Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '要確認' ? '（概算あり）' : '') : '未取得');
+        var rb = el.getBoundingClientRect(), bb = box.getBoundingClientRect();
+        tip.style.left = Math.min(Math.max(rb.left - bb.left + rb.width / 2, 50), bb.width - 50) + 'px'; tip.style.top = '24px'; tip.style.display = 'block';
+      };
+      el.addEventListener('mouseenter', show); el.addEventListener('click', show);
+      el.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+    });
+  }
+
+  function renderRevenue(d) {
+    var det = d.detail && d.detail.revenue;
+    if (!det) return '<section class="card"><div class="label">売上の内訳</div><span class="na">未取得</span><div class="note">請求ログを読めなかったか、まだ更新されていません。「更新」を押してください。</div></section>';
+    var months = Object.keys(det.byMonth).concat(Object.keys(det.unsent || {})).filter(function (m, i, a) { return a.indexOf(m) === i; }).sort();
+    if (!revMonth || months.indexOf(revMonth) < 0) revMonth = months.indexOf(d.current) >= 0 ? d.current : months[months.length - 1];
+    var h = '<section class="card"><div class="label">売上の内訳（月ごと・お客さんごと）</div><div class="chips" role="group" aria-label="月を選ぶ">' +
+      months.map(function (m) { return '<button type="button" data-month="' + m + '" aria-pressed="' + (m === revMonth) + '">' + esc(m.slice(0, 4)) + '年' + Number(m.slice(5, 7)) + '月' + (m > d.current ? '（予定）' : '') + '</button>'; }).join('') + '</div>';
+    var rows = det.byMonth[revMonth] || [];
+    if (!rows.length) h += '<div class="note">この月の売上はありません。</div>';
+    else {
+      h += '<ul class="list">' + rows.map(function (x) {
+        return '<li><span>' + esc(x.name) + (x.approx ? '<span class="tag approx">概算</span>' : '') + '<span class="sub">' + esc(x.period) + (x.total !== x.amount ? '（請求額 ' + esc(yen(x.total)) + ' を月割り）' : '') + '</span></span><span class="amt">' + esc(yen(x.amount)) + '</span></li>';
+      }).join('') + '</ul>';
+      h += '<div class="total"><span>合計（' + rows.length + '件）</span><span>' + esc(yen(rows.reduce(function (s, x) { return s + x.amount; }, 0))) + '</span></div>';
+    }
+    var un = (det.unsent || {})[revMonth] || [];
+    if (un.length) h += '<div class="warn">この月に発行して未送付の請求（売上に入れていません）：' + un.map(function (x) { return esc(x.name) + ' ' + esc(yen(x.amount)); }).join('、') + '</div>';
+    h += '<div class="note">「概算」は対象期間に複数の月が並んでいる請求を均等に分けたもの。取消した請求は出していません。2026/10/20より前に発行した請求は含みません。</div></section>';
+    return h;
+  }
+
+  function renderMembers(d) {
+    var ms = d.detail && d.detail.members;
+    if (!ms) return '<section class="card"><div class="label">会員一覧</div><span class="na">未取得</span><div class="note">請求マスタを読めなかったか、まだ更新されていません。「更新」を押してください。</div></section>';
+    var h = '<section class="card"><div class="label">会員一覧（請求マスタの有効）</div><div class="big">' + ms.length + '名</div>';
+    if (d.detail.unmatchedSessions) h += '<div class="note">今月のPT予定のうち、名前で誰か分からなかったもの：' + d.detail.unmatchedSessions + '件（回数に入っていません）</div>';
+    h += '</section>';
+    ms.forEach(function (m) {
+      var lb = m.lastBill, st = '<span class="na">請求の記録なし</span>';
+      if (lb) {
+        var cls = lb.status === '入金済' ? 'st-ok' : lb.status === '期日超過' ? 'st-late' : 'st-wait';
+        var icon = lb.status === '入金済' ? '✓ ' : lb.status === '期日超過' ? '! ' : '… ';
+        st = '<span class="' + cls + '">' + icon + esc(lb.status) + '</span>' + (lb.paid ? '（' + esc(lb.paid.slice(5).replace('-', '/')) + '）' : lb.due ? '（期日 ' + esc(lb.due.slice(5).replace('-', '/')) + '）' : '');
+      }
+      h += '<section class="card member"><h3>' + esc(m.name) + '</h3><div class="meta">' + esc(m.course || 'コース未設定') + '</div><dl class="kv">' +
+        '<dt>月額</dt><dd>' + (m.fee !== null ? esc(yen(m.fee)) : '<span class="na">未取得</span>') + '（' + esc(m.cycle || '周期未設定') + '）</dd>' +
+        '<dt>次の請求</dt><dd>' + esc(m.nextBill || '—') + '</dd>' +
+        '<dt>最新の請求</dt><dd>' + (lb ? esc(lb.period) + ' ' + esc(yen(lb.amount)) : '—') + '</dd>' +
+        '<dt>入金</dt><dd>' + st + '</dd>' +
+        '<dt>今月のセッション</dt><dd>' + (m.sessions ? '実施 ' + m.sessions.done + '回 ／ 予定 ' + m.sessions.plan + '回' : '<span class="na">未取得</span>') + '</dd>' +
+        '</dl></section>';
+    });
+    h += '<div class="note" style="text-align:center">セッション回数は、カレンダーの予定名にその人の名前（または名字）が入っているPT予定を数えています。</div>';
+    return h;
   }
 
   function showError(text) {
@@ -166,6 +303,7 @@
 
   function showLogin(registered, message) {
     btn.hidden = true;
+    document.getElementById('tabs').hidden = true;
     document.getElementById('stamp').textContent = '';
     var main = document.getElementById('main');
     if (registered) {
