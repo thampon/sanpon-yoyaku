@@ -142,12 +142,12 @@
     [['今月', r.cur], ['先月', r.prev]].forEach(function (x) {
       if (x[1].state === '要確認') h += '<div class="warn">' + x[0] + '：' + esc(String(x[1].note).split('／').pop()) + '（対象期間の書き方から月割りした概算）</div>';
     });
-    h += '<div class="note">2026/10/20以降に発行した請求だけを集計しています。それより前に出した先払いの請求は含まないため、2026年10〜12月は実際より少なく出ます。</div>' +
+    h += '<div class="note">2026/10/20以降に発行した請求と、それより前の請求のうち「補足の請求」に書いた分を集計しています。</div>' +
       '<div class="note">出どころ：請求ログ</div></section>';
 
     // 推移グラフ
     h += '<section class="card"><div class="label">月ごとの売上（直近6か月）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
-      '<div class="note">棒をタップすると金額が出ます。点線は未取得の月（請求ログより前）。</div></section>';
+      '<div class="note">棒をタップすると金額が出ます。点線は未取得の月。</div></section>';
 
     // 会員
     var m = d.members;
@@ -238,7 +238,7 @@
     }
     var un = (det.unsent || {})[revMonth] || [];
     if (un.length) h += '<div class="warn">この月に発行して未送付の請求（売上に入れていません）：' + un.map(function (x) { return esc(x.name) + ' ' + esc(yen(x.amount)); }).join('、') + '</div>';
-    h += '<div class="note">「概算」は対象期間に複数の月が並んでいる請求を均等に分けたもの。取消した請求は出していません。2026/10/20より前に発行した請求は含みません。</div></section>';
+    h += '<div class="note">「概算」は対象期間に複数の月が並んでいる請求を均等に分けたもの。取消した請求は出していません。2026/10/20より前の請求は「補足の請求」に書いた分だけ含みます。</div></section>';
     return h;
   }
 
@@ -253,7 +253,7 @@
       if (lb) {
         var cls = lb.status === '入金済' ? 'st-ok' : lb.status === '期日超過' ? 'st-late' : 'st-wait';
         var icon = lb.status === '入金済' ? '✓ ' : lb.status === '期日超過' ? '! ' : '… ';
-        st = '<span class="' + cls + '">' + icon + esc(lb.status) + '</span>' + (lb.paid ? '（' + esc(lb.paid.slice(5).replace('-', '/')) + '）' : lb.due ? '（期日 ' + esc(lb.due.slice(5).replace('-', '/')) + '）' : '');
+        st = '<span class="' + cls + '">' + icon + esc(lb.status) + '</span>' + (lb.paid ? (/^\d{4}-\d{2}-\d{2}$/.test(lb.paid) ? '（' + esc(lb.paid.slice(5).replace('-', '/')) + '）' : '') : lb.due ? '（期日 ' + esc(lb.due.slice(5).replace('-', '/')) + '）' : '');
       }
       h += '<section class="card member"><h3>' + esc(m.name) + '</h3><div class="meta">' + esc(m.course || 'コース未設定') + '</div><dl class="kv">' +
         '<dt>月額</dt><dd>' + (m.fee !== null ? esc(yen(m.fee)) : '<span class="na">未取得</span>') + '（' + esc(m.cycle || '周期未設定') + '）</dd>' +
