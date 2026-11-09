@@ -10,6 +10,7 @@
 | `src/Booking.html` | お客さん用画面の元ファイル（Apps Scriptの Booking.html と同じ内容） |
 | `gas/` | Apps Script のサーバー処理の控え（Code.gs・Admin.html・appsscript.json） |
 | `build-public.js` | 元ファイル → 公開用ファイルへの変換 |
+| `dashboard/index.html` | 経営ダッシュボード（D-007）の画面。ログインIDとパスワードがないと数字は出ない。数字とログイン確認は別のApps Script「経営ダッシュボード（D-007）」側 |
 
 ## 画面を直すとき
 1. `src/Booking.html`（または `gas/Admin.html`）を直す

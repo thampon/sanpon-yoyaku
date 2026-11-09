@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>経営ダッシュボード</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1f2328; --sub:#6b6f76; --line:#e6e3dd; --accent:#1f6f5c; --warn:#a15c00; --na:#8a8f98; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; font-size:16px; line-height:1.5; }
+  header { position:sticky; top:0; z-index:2; background:var(--bg); display:flex; align-items:center; justify-content:space-between; padding:12px 16px 8px; }
+  h1 { font-size:18px; margin:0; }
+  .stamp { font-size:12px; color:var(--sub); }
+  button#refresh { min-height:44px; min-width:88px; padding:0 16px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:10px; font-size:15px; font-weight:600; }
+  button#refresh:disabled { opacity:.5; }
+  main { padding:0 12px 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin:10px 0; }
+  .label { font-size:13px; color:var(--sub); margin-bottom:4px; }
+  .big { font-size:30px; font-weight:700; letter-spacing:.01em; font-variant-numeric:tabular-nums; }
+  .row { display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
+  .row .col { flex:1 1 0; min-width:120px; }
+  .mid { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+  .note { font-size:12px; color:var(--sub); margin-top:6px; }
+  .na { color:var(--na); font-weight:600; }
+  .warn { color:var(--warn); font-size:12px; margin-top:6px; }
+  .bar { height:10px; background:#ece9e3; border-radius:6px; overflow:hidden; margin:6px 0 2px; }
+  .bar > span { display:block; height:100%; background:var(--accent); }
+  .goal { margin-top:10px; }
+  .places { display:grid; grid-template-columns:1fr auto; gap:4px 12px; margin-top:8px; font-variant-numeric:tabular-nums; }
+  .places div:nth-child(even) { text-align:right; font-weight:600; }
+  .msg { padding:12px 16px; border-radius:10px; margin:10px 0; font-size:14px; }
+  .msg.err { background:#fdecea; color:#8a1c12; }
+  .msg.info { background:#eef4f2; color:#1f4d42; }
+  .src { font-size:12px; color:var(--sub); text-align:center; margin-top:16px; }
+  .login { max-width:420px; margin:24px auto; }
+  .login h2 { font-size:18px; margin:0 0 6px; }
+  .login p { font-size:14px; color:var(--sub); margin:0 0 14px; }
+  .login label { display:block; font-size:14px; margin:12px 0 4px; }
+  .login input { width:100%; min-height:48px; font-size:16px; padding:0 12px; border:1px solid #cfcac2; border-radius:10px; background:#fff; }
+  .login button { width:100%; min-height:48px; margin-top:18px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; }
+  .login button:disabled { opacity:.5; }
+  .linkbtn { background:none; border:0; color:var(--sub); font-size:13px; text-decoration:underline; min-height:44px; padding:0 4px; }
+  .foot { text-align:center; margin-top:8px; }
+  .loading { text-align:center; color:var(--sub); padding:40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>経営ダッシュボード</h1>
+    <div class="stamp" id="stamp">読み込み中…</div>
+  </div>
+  <button id="refresh" type="button" hidden>更新</button>
+</header>
+<main id="main"><div class="loading">読み込み中…</div></main>
+
+<script>
+  var API = 'https://script.google.com/macros/s/AKfycbzjvYeDGy-XYPYm7vXaxabIkeo-io7qN6JwQUihlRCdUdPvPrJVt3-2z0PUHygS5zrZYg/exec';
+  var TOKEN_KEY = 'd007_token';
+  var busy = false;
+  var btn = document.getElementById('refresh');
+
+  function yen(v) { return typeof v === 'number' ? '¥' + v.toLocaleString('ja-JP') : null; }
+  function num(v, unit) { return typeof v === 'number' ? v.toLocaleString('ja-JP') + unit : null; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
+  function val(x, f) { var t = f(x.value); return t === null ? '<span class="na">未取得</span>' : esc(t); }
+  function monthJa(ym) { return Number(ym.slice(5, 7)) + '月'; }
+
+  function render(d) {
+    var main = document.getElementById('main');
+    if (!d || d.empty) {
+      main.innerHTML = '<div class="msg info">まだ集計されていません。「更新」を押してください。</div>';
+      document.getElementById('stamp').textContent = '未集計';
+      return;
+    }
+    document.getElementById('stamp').textContent = d.stamp + ' 時点';
+    var h = '';
+    if (d.lastLog && d.lastLog.result !== 'OK') {
+      h += '<div class="msg err">前回の更新で読めなかったデータがあります：' + esc(d.lastLog.message) + '</div>';
+    }
+
+    // 売上
+    var r = d.revenue;
+    h += '<section class="card"><div class="label">売上（請求ベース・対象月で月割り）</div><div class="row">' +
+      '<div class="col"><div class="label">今月（' + monthJa(d.current) + '）</div><div class="big">' + val(r.cur, yen) + '</div></div>' +
+      '<div class="col"><div class="label">先月（' + monthJa(d.previous) + '）</div><div class="mid">' + val(r.prev, yen) + '</div></div></div>';
+    [['今月', r.unsentCur], ['先月', r.unsentPrev]].forEach(function (u) {
+      if (typeof u[1].value === 'number' && u[1].value > 0) h += '<div class="warn">' + u[0] + '発行で未送付の請求：' + esc(yen(u[1].value)) + '（売上に入れていません）</div>';
+    });
+    [['今月', r.cur], ['先月', r.prev]].forEach(function (x) {
+      if (x[1].state === '要確認') h += '<div class="warn">' + x[0] + '：' + esc(String(x[1].note).split('／').pop()) + '（対象期間の書き方から月割りした概算）</div>';
+    });
+    h += '<div class="note">2026/10/20以降に発行した請求だけを集計しています。それより前に出した先払いの請求は含まないため、2026年10〜12月は実際より少なく出ます。</div>' +
+      '<div class="note">出どころ：請求ログ</div></section>';
+
+    // 会員
+    var m = d.members;
+    h += '<section class="card"><div class="label">会員（請求マスタの有効）</div><div class="big">' + val(m, function (v) { return num(v, '名'); }) + '</div>';
+    d.goals.forEach(function (g) {
+      var target = Number((String(g.label).match(/（(\d+)名）/) || [])[1]);
+      var cur = typeof m.value === 'number' ? m.value : null;
+      var pct = cur !== null && target ? Math.min(100, Math.round(cur / target * 100)) : 0;
+      h += '<div class="goal"><div class="row"><div class="col">' + esc(g.label) + '</div><div><b>' +
+        (typeof g.value === 'number' ? (g.value === 0 ? '達成' : 'あと' + g.value + '名') : '<span class="na">未取得</span>') +
+        '</b></div></div><div class="bar" role="img" aria-label="' + pct + '%"><span style="width:' + pct + '%"></span></div></div>';
+    });
+    h += '<div class="note">出どころ：請求マスタ（毎朝の記録）</div></section>';
+
+    // セッション
+    var s = d.sessions;
+    h += '<section class="card"><div class="label">セッション（' + monthJa(d.current) + '・カレンダー）</div><div class="row">' +
+      '<div class="col"><div class="big">' + val(s.cur, function (v) { return num(v, '回'); }) + '</div>' +
+      (typeof s.done.value === 'number' ? '<div class="note">実施済 ' + s.done.value + '回 ／ 予定 ' + s.plan.value + '回</div>' : '') + '</div>' +
+      '<div class="col"><div class="label">先月</div><div class="mid">' + val(s.prev, function (v) { return num(v, '回'); }) + '</div></div></div>';
+    var shown = s.places.filter(function (p) { return typeof p.value === 'number' && p.value > 0; });
+    if (shown.length) {
+      h += '<div class="places">' + shown.map(function (p) { return '<div>' + esc(p.label) + '</div><div>' + p.value + '回</div>'; }).join('') + '</div>';
+    }
+    h += '<div class="note">出どころ：Googleカレンダー（予定名に「PT」を含む予定）</div></section>';
+
+    // 未取得の項目
+    h += '<section class="card"><div class="row"><div class="col">新規</div><div>' + val(d.newMembers, function (v) { return num(v, '名'); }) + '</div></div>' +
+      '<div class="row"><div class="col">退会</div><div>' + val(d.left, function (v) { return num(v, '名'); }) + '</div></div>' +
+      '<div class="row"><div class="col">体験からの申込率</div><div>' + val(d.trialRate, function (v) { return num(v, '%'); }) + '</div></div></section>';
+
+    h += '<div class="src">出どころ：請求ログ／請求マスタ／Googleカレンダー（どれも読むだけ）</div>';
+    h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
+    main.innerHTML = h;
+    document.getElementById('logout').addEventListener('click', logout);
+  }
+
+  function showError(text) {
+    var main = document.getElementById('main');
+    var old = main.querySelector('.msg.err.live');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.className = 'msg err live';
+    box.textContent = text;
+    main.insertBefore(box, main.firstChild);
+  }
+
+
+  function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
+  function setToken(t) { try { if (t) localStorage.setItem(TOKEN_KEY, t); else localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
+
+  // 本文はJSON文字列を text/plain で送る（Apps Scriptが受け取れる形）
+  function api(req, timeoutMs) {
+    var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000) : null;
+    return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(req), signal: ctrl ? ctrl.signal : undefined })
+      .then(function (r) { return r.json(); })
+      .finally(function () { if (timer) clearTimeout(timer); });
+  }
+
+  var ERR = {
+    bad_login: 'ログインIDかパスワードが違います。',
+    bad_code: '登録コードが違います。',
+    weak: 'ログインIDは3文字以上、パスワードは8文字以上にしてください。',
+    locked: '何度もまちがえたため、15分間ログインできません。時間をおいてお試しください。',
+    already_registered: 'すでに登録済みです。ログインしてください。',
+    not_registered: 'まだ登録されていません。'
+  };
+
+  function setBusy(b) { busy = b; btn.disabled = b; btn.textContent = b ? '更新中…' : '更新'; }
+
+  function showLogin(registered, message) {
+    btn.hidden = true;
+    document.getElementById('stamp').textContent = '';
+    var main = document.getElementById('main');
+    if (registered) {
+      main.innerHTML = '<form class="card login" id="f" autocomplete="on"><h2>ログイン</h2><p>ログインIDとパスワードを入れてください。</p>' +
+        '<label for="id">ログインID</label><input id="id" name="username" autocomplete="username" required>' +
+        '<label for="pw">パスワード</label><input id="pw" name="password" type="password" autocomplete="current-password" required>' +
+        '<button type="submit" id="go">ログイン</button></form>';
+    } else {
+      main.innerHTML = '<form class="card login" id="f" autocomplete="on"><h2>はじめての登録</h2><p>開発室から伝えた登録コードと、これから使うログインID・パスワードを決めて入れてください。パスワードは開発室にも見えません。</p>' +
+        '<label for="code">登録コード</label><input id="code" autocomplete="one-time-code" required>' +
+        '<label for="id">ログインID（3文字以上）</label><input id="id" name="username" autocomplete="username" required>' +
+        '<label for="pw">パスワード（8文字以上）</label><input id="pw" name="password" type="password" autocomplete="new-password" required>' +
+        '<label for="pw2">パスワード（確認）</label><input id="pw2" type="password" autocomplete="new-password" required>' +
+        '<button type="submit" id="go">登録してはじめる</button></form>';
+    }
+    if (message) showError(message);
+    document.getElementById('f').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var go = document.getElementById('go');
+      if (go.disabled) return;
+      var req = { action: registered ? 'login' : 'register', id: document.getElementById('id').value, password: document.getElementById('pw').value };
+      if (!registered) {
+        if (req.password !== document.getElementById('pw2').value) { showError('確認用のパスワードが一致しません。'); return; }
+        req.code = document.getElementById('code').value.trim();
+      }
+      go.disabled = true;
+      api(req).then(function (res) {
+        if (res.ok && res.token) { setToken(res.token); load(); return; }
+        go.disabled = false;
+        showError(ERR[res.error] || 'うまくいきませんでした。もう一度お試しください。');
+      }).catch(function () {
+        go.disabled = false;
+        showError('通信できませんでした。電波のよい場所でもう一度お試しください。');
+      });
+    });
+  }
+
+  function start() {
+    if (getToken()) { load(); return; }
+    api({ action: 'status' }).then(function (res) { showLogin(!!res.registered); })
+      .catch(function () { document.getElementById('main').innerHTML = ''; showError('通信できませんでした。電波のよい場所で開き直してください。'); });
+  }
+
+  function load() {
+    api({ action: 'data', token: getToken() }).then(function (res) {
+      if (!res.ok && res.error === 'auth') { setToken(null); start(); return; }
+      if (!res.ok) { document.getElementById('main').innerHTML = ''; showError('数字を読み込めませんでした。少し待って開き直してください。'); return; }
+      btn.hidden = false;
+      render(res.data);
+    }).catch(function () {
+      document.getElementById('main').innerHTML = '';
+      showError('通信できませんでした。電波のよい場所で開き直してください。');
+      document.getElementById('stamp').textContent = '';
+    });
+  }
+
+  function logout() {
+    var t = getToken();
+    setToken(null);
+    api({ action: 'logout', token: t }).catch(function () {}).then(function () { showLogin(true, ''); });
+  }
+
+  btn.addEventListener('click', function () {
+    if (busy) return;
+    setBusy(true);
+    api({ action: 'refresh', token: getToken() }, 90000).then(function (res) {
+      setBusy(false);
+      if (!res.ok && res.error === 'auth') { setToken(null); start(); return; }
+      if (res.data) render(res.data);
+      if (!res.ok) showError(res.message || '更新できませんでした。前の数字のまま表示しています。');
+    }).catch(function () { setBusy(false); showError('更新できませんでした。前の数字のまま表示しています。'); });
+  });
+
+  start();
+</script>
+</body>
+</html>
