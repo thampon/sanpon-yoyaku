@@ -1302,6 +1302,8 @@ function appendRow_(name, obj) {
 }
 
 // ===== Slack =====
+/** お客さんへの連絡の末尾に付ける名乗り（経理部・カスタマーサクセス部と共通の「運営AI」） */
+const SIGNATURE_ = '\n\n━━━━━━━━━━━━\n:robot_face: *運営AI*\n━━━━━━━━━━━━';
 /** 顧客の既存DMチャンネルに、さんぽん本人として投稿（ユーザートークン） */
 function sendCustomer_(c, text) {
   const tok = PropertiesService.getScriptProperties().getProperty('SLACK_USER_TOKEN');
@@ -1312,7 +1314,7 @@ function sendCustomer_(c, text) {
       method: 'post',
       contentType: 'application/json; charset=utf-8',
       headers: { Authorization: 'Bearer ' + tok },
-      payload: JSON.stringify({ channel: c.slack, text: text }),
+      payload: JSON.stringify({ channel: c.slack, text: text + SIGNATURE_ }),
       muteHttpExceptions: true
     });
     const j = JSON.parse(res.getContentText());
