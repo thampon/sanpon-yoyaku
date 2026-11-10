@@ -81,7 +81,7 @@
   </div>
   <button id="refresh" type="button" hidden>更新</button>
 </header>
-<nav class="tabs" id="tabs" hidden role="tablist"><button type="button" role="tab" data-tab="sum" aria-selected="true">概要</button><button type="button" role="tab" data-tab="rev" aria-selected="false">売上</button><button type="button" role="tab" data-tab="mem" aria-selected="false">会員</button></nav>
+<nav class="tabs" id="tabs" hidden role="tablist"><button type="button" role="tab" data-tab="sum" aria-selected="true">概要</button><button type="button" role="tab" data-tab="rev" aria-selected="false">売上</button><button type="button" role="tab" data-tab="ses" aria-selected="false">回数</button><button type="button" role="tab" data-tab="mem" aria-selected="false">会員</button></nav>
 <main id="main"><div class="loading">読み込み中…</div></main>
 
 <script>
@@ -97,7 +97,7 @@
   function monthJa(ym) { return Number(ym.slice(5, 7)) + '月'; }
   function fcTag(x) { return x && x.state === '予測' ? '<span class="tag fc">予測</span>' : ''; }
 
-  var tab = 'sum', lastData = null, revMonth = null;
+  var tab = 'sum', lastData = null, revMonth = null, sesMonth = null;
   function setTab(t) { tab = t; Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-selected', b.getAttribute('data-tab') === t ? 'true' : 'false'); }); render(lastData); window.scrollTo(0, 0); }
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.addEventListener('click', function () { setTab(b.getAttribute('data-tab')); }); });
   function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(1) + '%' : null; }
@@ -118,12 +118,16 @@
     }
     if (tab === 'rev') h += renderRevenue(d);
     else if (tab === 'mem') h += renderMembers(d);
+    else if (tab === 'ses') h += renderSessions(d);
     else h += renderSummary(d);
     h += '<div class="src">出どころ：料金表_パーソナル（経理部）／請求ログ／請求マスタ／Googleカレンダー（どれも読むだけ）</div>';
     h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
     main.innerHTML = h;
     document.getElementById('logout').addEventListener('click', logout);
-    if (tab === 'sum') bindChart(d);
+    if (tab === 'sum') bindChart(d, 'chart', 'tip', function (i) { var t = d.trend[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得'); });
+    if (tab === 'ses') bindChart(d, 'schart', 'stip', function (i) { var t = (d.sessionTrend || [])[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.total === 'number' ? t.total + '回（実施 ' + t.done + '・予定 ' + t.plan + '）' : '未取得'); });
+    if (tab === 'ses') bindChart(d, 'gchart', 'gtip', function (i) { var x = (d.gymTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gym === 'number' ? yen(x.gym) + (x.state === '予測' ? '（予測）' : '') : '未取得'); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-smonth]'), function (b) { b.addEventListener('click', function () { sesMonth = b.getAttribute('data-smonth'); render(lastData); }); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-month]'), function (b) { b.addEventListener('click', function () { revMonth = b.getAttribute('data-month'); render(lastData); }); });
   }
 
@@ -209,13 +213,12 @@
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="月ごとの売上：' + esc(desc) + '">' + g + '</svg>';
   }
 
-  function bindChart(d) {
-    var box = document.getElementById('chart'), tip = document.getElementById('tip');
+  function bindChart(d, boxId, tipId, text) {
+    var box = document.getElementById(boxId), tip = document.getElementById(tipId);
     if (!box) return;
     Array.prototype.forEach.call(box.querySelectorAll('.hit'), function (el) {
       var show = function () {
-        var t = d.trend[Number(el.getAttribute('data-i'))];
-        tip.textContent = Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得');
+        tip.textContent = text(Number(el.getAttribute('data-i')));
         var rb = el.getBoundingClientRect(), bb = box.getBoundingClientRect();
         tip.style.left = Math.min(Math.max(rb.left - bb.left + rb.width / 2, 50), bb.width - 50) + 'px'; tip.style.top = '24px'; tip.style.display = 'block';
       };
@@ -248,6 +251,77 @@
     var un = (det.unsent || {})[revMonth] || [];
     if (un.length) h += '<div class="warn">この月に発行して未送付の請求（売上に入れていません）：' + un.map(function (x) { return esc(x.name) + ' ' + esc(yen(x.amount)); }).join('、') + '</div>';
     h += '<div class="note">出どころ：料金表_パーソナル「会員台帳」の売上（サービスを提供した月で計上・経理部）。未送付の請求は請求ログから。</div></section>';
+    return h;
+  }
+
+  // セッション回数：実施済（濃い）＋予定（薄い）の積み上げ棒。最新の実績月だけ数値を直接表示
+  function sessionChartSvg(st, cur) {
+    var W = 340, H = 170, L = 8, R = 8, T = 22, B = 26;
+    var tot = st.map(function (t) { return typeof t.total === 'number' ? t.total : null; });
+    var max = Math.max.apply(null, tot.filter(function (v) { return v !== null; }).concat([1]));
+    var top = Math.max(10, Math.ceil(max / 10) * 10);
+    var n = st.length || 1, slot = (W - L - R) / n, bw = Math.min(28, slot - 10);
+    var y = function (v) { return T + (H - T - B) * (1 - v / top); };
+    var g = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top / 2) + '" y2="' + y(top / 2) + '" stroke="#ece9e3"/>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top) + '" y2="' + y(top) + '" stroke="#ece9e3"/>' +
+      '<text x="' + (W - R) + '" y="' + (y(top) - 4) + '" text-anchor="end" font-size="10" fill="#6b6f76">' + top + '回</text>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#cfcac2"/>';
+    st.forEach(function (t, i) {
+      var cx = L + slot * i + slot / 2, x = cx - bw / 2;
+      if (tot[i] === null) {
+        g += '<rect x="' + x + '" y="' + (y(0) - 14) + '" width="' + bw + '" height="14" rx="4" fill="none" stroke="#b9b4ab" stroke-dasharray="3 3"/>';
+      } else {
+        var dn = typeof t.done === 'number' ? t.done : 0, pl = typeof t.plan === 'number' ? t.plan : 0;
+        if (dn > 0) g += '<rect x="' + x + '" y="' + y(dn) + '" width="' + bw + '" height="' + Math.max(1, y(0) - y(dn)) + '" fill="' + (t.month === cur ? '#1f6f5c' : '#7fae9f') + '"/>';
+        if (pl > 0) g += '<rect x="' + x + '" y="' + y(dn + pl) + '" width="' + bw + '" height="' + Math.max(1, y(dn) - y(dn + pl)) + '" fill="#c4dbd3" stroke="#1f6f5c" stroke-width="1" stroke-dasharray="3 2"/>';
+        if (t.month === cur || (i === n - 1 && tot[i] > 0)) g += '<text x="' + cx + '" y="' + (y(tot[i]) - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + tot[i] + '回</text>';
+      }
+      g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#6b6f76">' + Number(t.month.slice(5, 7)) + '月</text>';
+      g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>';
+    });
+    var desc = st.map(function (t, i) { return Number(t.month.slice(5, 7)) + '月 ' + (tot[i] === null ? '未取得' : tot[i] + '回（実施' + t.done + '・予定' + t.plan + '）'); }).join('、');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="月ごとのセッション回数：' + esc(desc) + '">' + g + '</svg>';
+  }
+
+  function renderSessions(d) {
+    var st = d.sessionTrend || [];
+    if (!st.length) return '<section class="card"><div class="label">セッション回数の推移</div><span class="na">未取得</span><div class="note">「更新」を押すと表示されます。</div></section>';
+    var cur = d.current, curT = st.filter(function (t) { return t.month === cur; })[0] || {}, prevT = st.filter(function (t) { return t.month === d.previous; })[0] || {};
+    var next = st.filter(function (t) { return t.month > cur; })[0];
+    var h = '<section class="card"><div class="label">月ごとのセッション回数（カレンダー）</div><div class="chart" id="schart">' + sessionChartSvg(st, cur) + '<div class="tip" id="stip"></div></div>' +
+      '<div class="note">濃い色は実施済、薄い色（点線の枠）はこれからの予定。棒をタップすると内訳が出ます。</div></section>';
+    var diff = typeof curT.total === 'number' && typeof prevT.total === 'number' ? curT.total - prevT.total : null;
+    h += '<section class="card"><div class="row"><div class="col"><div class="label">今月（' + monthJa(cur) + '）</div><div class="big">' + (typeof curT.total === 'number' ? curT.total + '回' : '<span class="na">未取得</span>') + '</div>' +
+      (typeof curT.done === 'number' ? '<div class="note">実施済 ' + curT.done + '回 ／ 予定 ' + curT.plan + '回</div>' : '') + '</div>' +
+      '<div class="col"><div class="label">先月（' + monthJa(d.previous) + '）</div><div class="mid">' + (typeof prevT.total === 'number' ? prevT.total + '回' : '<span class="na">未取得</span>') + '</div>' +
+      (diff !== null ? '<div class="note">今月は先月より ' + (diff >= 0 ? diff + '回多い' : (-diff) + '回少ない') + '（予定を含む）</div>' : '') + '</div></div>' +
+      (next && typeof next.total === 'number' ? '<div class="note">' + monthJa(next.month) + 'に入っている予定：' + next.total + '回</div>' : '') + '</section>';
+    var months = st.filter(function (t) { return t.month <= cur; }).map(function (t) { return t.month; });
+    if (!sesMonth || months.indexOf(sesMonth) < 0) sesMonth = cur;
+    var sel = st.filter(function (t) { return t.month === sesMonth; })[0] || { places: [] };
+    h += '<section class="card"><div class="label">場所別の回数</div><div class="chips" role="group" aria-label="月を選ぶ">' +
+      months.map(function (m) { return '<button type="button" data-smonth="' + m + '" aria-pressed="' + (m === sesMonth) + '">' + Number(m.slice(5, 7)) + '月</button>'; }).join('') + '</div>';
+    var shown = (sel.places || []).filter(function (p) { return typeof p.value === 'number' && p.value > 0; }).sort(function (a, b) { return b.value - a.value; });
+    if (typeof sel.total !== 'number') h += '<span class="na">未取得</span>';
+    else if (!shown.length) h += '<div class="note">この月のセッションはありません。</div>';
+    else h += '<ul class="list">' + shown.map(function (p) { return '<li><span>' + esc(p.label) + '</span><span class="amt">' + p.value + '回</span></li>'; }).join('') + '</ul>' +
+      '<div class="total"><span>合計</span><span>' + sel.total + '回</span></div>';
+    h += '<div class="note">出どころ：Googleカレンダー（予定名に「PT」を含む予定。終日の予定は除く）。場所は予定の「場所」欄の文字でまとめています。</div></section>';
+
+    // レンタルジム代
+    var gt = d.gymTrend || [];
+    if (gt.length) {
+      h += '<section class="card"><div class="label">レンタルジム代の推移（料金表PL）</div><div class="chart" id="gchart">' +
+        chartSvg(gt.map(function (x) { return { month: x.month, value: x.gym, state: x.state }; })) + '<div class="tip" id="gtip"></div></div>' +
+        '<div class="note">薄い棒は予測。棒をタップすると金額が出ます。</div>';
+      h += '<ul class="list">' + gt.slice().reverse().map(function (x) {
+        return '<li><span>' + Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '<span class="tag fc">予測</span>' : '') +
+          '<span class="sub">ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + ' ÷ ' + (typeof x.sessions === 'number' ? x.sessions + '回' : '未取得') +
+          (typeof x.calendar === 'number' ? '（カレンダーでは ' + x.calendar + '回）' : '') + '</span></span>' +
+          '<span class="amt">' + (typeof x.perSession === 'number' ? esc(yen(x.perSession)) + '<span class="sub" style="text-align:right">1回あたり</span>' : '<span class="na">未取得</span>') + '</span></li>';
+      }).join('') + '</ul>';
+      h += '<div class="note">1回あたり＝その月のレンタルジム代 ÷ 料金表のセッション数（経理部の集計）。予測の月は経理部の見込み。</div></section>';
+    }
     return h;
   }
 
