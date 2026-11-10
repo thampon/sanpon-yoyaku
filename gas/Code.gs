@@ -195,7 +195,7 @@ function doGet(e) {
  * body: {"fn":"apiSlots","args":[...]}  →  {"ok":true,"result":...} / {"ok":false,"error":"..."}
  */
 const PUBLIC_API_ = ['apiCustomerView', 'apiSlots', 'apiSlotsAll', 'apiRequest', 'apiAdminView', 'apiApprove',
-  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule'];
+  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch'];
 function doPost(e) {
   let out;
   try {
@@ -203,7 +203,8 @@ function doPost(e) {
     if (PUBLIC_API_.indexOf(body.fn) < 0) throw new Error('不正なリクエストです。');
     const fns = { apiCustomerView: apiCustomerView, apiSlots: apiSlots, apiSlotsAll: apiSlotsAll, apiRequest: apiRequest,
       apiAdminView: apiAdminView, apiApprove: apiApprove, apiReject: apiReject, apiCancel: apiCancel,
-      apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule };
+      apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule,
+      apiNotifyApprovedBatch: apiNotifyApprovedBatch };
     out = { ok: true, result: fns[body.fn].apply(null, Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: err && err.message ? err.message : String(err) };
@@ -575,7 +576,8 @@ function apiAdminView(adminToken) {
 
 /**
  * 承認。change を渡すと日時・場所を変えて承認する（管理画面の「変更して承認」）
- * change: { date: 'yyyy-MM-dd', time: 'HH:mm', gymId: 'glitter', force: true=予定の重なりを無視 }
+ * change: { date: 'yyyy-MM-dd', time: 'HH:mm', gymId: 'glitter', force: true=予定の重なりを無視,
+ *           notify: false=お客さんに連絡しない（まとめて承認のとき。あとで apiNotifyApprovedBatch でまとめて送る） }
  */
 function apiApprove(adminToken, bookingId, change) {
   return guard_(function () {
@@ -645,13 +647,64 @@ function apiApprove(adminToken, bookingId, change) {
       updateCells_(SH.CUSTOMERS, c._row, { '残回数': rem });
       appendRow_(SH.TICKETS, { '日時': now, '顧客ID': c.id, '氏名': c.name, '増減': -1, '理由': '消化', '予約ID': b['予約ID'] });
 
-      const sent = sendCustomer_(c, fill_(st.tplApprove, {
+      const quiet = !!(change && change.notify === false);
+      const sent = quiet ? null : sendCustomer_(c, fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: gym.name, address: gym.address, remaining: rem
       }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : ''));
-      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + sentNote_(sent);
+      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent));
     });
   });
+}
+
+/**
+ * まとめて承認したあと、お客さんごとに確定連絡を1通にまとめて送る（管理画面の「まとめて承認」から）
+ * bookingIds：確定済みにした予約ID。お客さんごとにまとめ、会場が全部同じなら場所・住所は1回だけ書く
+ * 戻り値：{ sent: [氏名…], failed: [{ name, error }…], text: 管理画面に出す一言 }
+ */
+function apiNotifyApprovedBatch(adminToken, bookingIds) {
+  return guard_(function () {
+    requireAdmin_(adminToken);
+    const ids = (Array.isArray(bookingIds) ? bookingIds : []).map(String);
+    if (!ids.length) fail_('予約が選ばれていません。');
+    ROWS_MEMO_ = {}; FRESH_READS_ = true; // 承認直後の最新のシートで判断する
+    let rows, gyms;
+    try { rows = readRows_(SH.BOOKINGS); gyms = getGyms_(); readRows_(SH.CUSTOMERS); } finally { FRESH_READS_ = false; }
+    const groups = {}, order = [];
+    rows.forEach(function (b) {
+      if (ids.indexOf(b['予約ID']) < 0 || b['状態'] !== STATUS.CONFIRMED) return;
+      if (!groups[b['顧客ID']]) { groups[b['顧客ID']] = []; order.push(b['顧客ID']); }
+      groups[b['顧客ID']].push(b);
+    });
+    const sentNames = [], failed = [];
+    order.forEach(function (cid) {
+      const c = requireCustomerById_(cid);
+      const text = batchApproveText_(c, groups[cid].sort(byStart_), gyms);
+      const r = sendCustomer_(c, text);
+      if (r.ok) sentNames.push(c.name); else failed.push({ name: c.name, error: r.error });
+    });
+    const msg = (sentNames.length ? sentNames.join('、') + 'さんに確定連絡をまとめて送りました。' : '') +
+      (failed.length ? '※' + failed.map(function (f) { return f.name + 'さん（' + f.error + '）'; }).join('、') + 'へのSlack連絡は失敗しました。手動で連絡してください。' : '');
+    return { sent: sentNames, failed: failed, text: msg || '連絡する予約がありませんでした。' };
+  });
+}
+
+/** まとめて確定したときの文面（1人分） */
+function batchApproveText_(c, list, gyms) {
+  const gymOf = function (b) { return gymById_(gyms, b['ジムID']) || { id: b['ジムID'], name: b['ジムID'], address: '' }; };
+  const same = list.every(function (b) { return b['ジムID'] === list[0]['ジムID']; });
+  const lines = list.map(function (b) {
+    const s = new Date(b['開始']), e = new Date(b['終了']);
+    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + gymOf(b).name);
+  });
+  const out = [c.name + 'さん', 'ご予約が確定しました（' + list.length + '件）。', ''].concat(lines);
+  if (same) {
+    const g = gymOf(list[0]);
+    out.push('', '場所：' + g.name);
+    if (g.address) out.push('住所：' + g.address);
+  }
+  out.push((same ? '' : '\n') + '残り回数：' + c.remaining + '回', '', '当日お待ちしています！');
+  return out.join('\n');
 }
 
 function apiReject(adminToken, bookingId, reason) {
