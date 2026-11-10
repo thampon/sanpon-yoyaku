@@ -246,6 +246,11 @@
   .date .dw { font-size:11px; }
   .date .n { margin-top:5px; padding:1px 4px; font-size:10px; }
   .date .np { font-size:9px; }
+  /* 空きのない日：日付だけ見せて押せないようにする */
+  .date.empty { background:#F3F5F4; border-color:#E3E8E6; color:#A3AFAB; cursor:default; box-shadow:none; }
+  .date.empty .dw { color:#B3BDB9; }
+  .date.empty .n { background:transparent; color:#B3BDB9; }
+  .date .n { line-height:1.6; }
 </style>
 </head>
 <body>
@@ -416,26 +421,54 @@
   const hourOf = (t) => Number(t.label.split(':')[0]);
   const inBands = (t) => BANDS.some(([k, , , f, to]) => bandOn[k] && hourOf(t) >= f && hourOf(t) < to);
 
+  // 空きのない日も日付ボタンに並べる（2026-11-10 さんぽん指示）。受付開始日〜最後に空きがある日までを1日ずつ埋める
+  const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
+  function withEmptyDays(days) {
+    if (!days.length) return days;
+    const byKey = {}; days.forEach((d) => { byKey[d.key] = d; });
+    const keys = days.map((d) => d.key).sort();
+    const DAY = 86400000;
+    const toMs = (k) => Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10));
+    const lead = view && Number(view.leadDays) >= 0 ? Number(view.leadDays) : 0;
+    const now = new Date(Date.now() + 9 * 3600000); // 日本時間の今日
+    const startMs = Math.min(toMs(keys[0]), Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) + lead * DAY);
+    const endMs = toMs(keys[keys.length - 1]);
+    const out = [];
+    for (let ms = startMs; ms <= endMs; ms += DAY) {
+      const j = new Date(ms);
+      const k = j.getUTCFullYear() + '-' + String(j.getUTCMonth() + 1).padStart(2, '0') + '-' + String(j.getUTCDate()).padStart(2, '0');
+      out.push(byKey[k] || { label: (j.getUTCMonth() + 1) + '/' + j.getUTCDate() + '（' + DOW_JA[j.getUTCDay()] + '）', key: k, times: [] });
+    }
+    return out;
+  }
+
   function renderSlots() {
     const box = $('slots');
     if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">予約できる枠が今はありません。トレーナーにご相談ください。</div>'; return; }
     // しぼり込み後の日付一覧（選んでいた日はなるべく保つ）
     const curLabel = window.__dayLabel;
-    const vs = slots.map((d) => ({ label: d.label, times: d.times.filter(inBands) })).filter((d) => d.times.length);
+    const vs = withEmptyDays(slots.map((d) => ({ label: d.label, key: String(d.times[0].start).slice(0, 10), times: d.times.filter(inBands) })));
     let h = '<div class="bandf">' + BANDS.map(([k, n, r]) =>
       '<button class="bf' + (bandOn[k] ? ' on' : '') + '" data-band="' + k + '"><span class="box">' + (bandOn[k] ? '✓' : '') + '</span>' + n + '<small>' + r + '</small></button>').join('') + '</div>';
-    if (!vs.length) {
+    if (!vs.some((d) => d.times.length)) {
       box.innerHTML = h + '<div class="note" style="margin-top:16px">選んだ時間帯に空きがありません。チェックを増やしてみてください。</div>';
       bindBands(box); return;
     }
-    const keep = vs.findIndex((d) => d.label === curLabel);
-    if (keep >= 0) dayIdx = keep; else if (dayIdx >= vs.length) dayIdx = 0;
+    // 空きのない日は選べない。選んでいた日が使えなければ、最初の空きのある日にする
+    const keep = vs.findIndex((d) => d.label === curLabel && d.times.length);
+    if (keep >= 0) dayIdx = keep; else if (!vs[dayIdx] || !vs[dayIdx].times.length) dayIdx = vs.findIndex((d) => d.times.length);
     window.__dayLabel = vs[dayIdx].label;
     // ① 日付を横スクロールで選ぶ
     h += '<div class="dates" id="dates">';
     vs.forEach((d, i) => {
       const m = d.label.match(/^(\d+\/\d+)（(.)）/) || [];
       const cls = m[2] === '土' ? ' sat' : m[2] === '日' ? ' sun' : '';
+      if (!d.times.length) { // 空きのない日（休み・満席・時間帯しぼり込みで0件）も、日付だけは並べて見せる
+        h += '<button class="date empty' + cls + '" disabled aria-label="' + esc(d.label) + ' 空きなし">' +
+          '<div class="md">' + esc(m[1] || d.label) + '</div><div class="dw">' + esc(m[2] || '') + '</div>' +
+          '<div class="n">×</div>' + (prefId() ? '<div class="np">&nbsp;</div>' : '') + '</button>';
+        return;
+      }
       h += '<button class="date' + cls + (i === dayIdx ? ' on' : '') + '" data-day-idx="' + i + '">' +
         '<div class="md">' + esc(m[1] || d.label) + '</div><div class="dw">' + esc(m[2] || '') + '</div>' +
         '<div class="n">' + d.times.length + '枠</div>' +
