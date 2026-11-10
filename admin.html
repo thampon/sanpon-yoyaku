@@ -381,7 +381,7 @@
     const short = Object.keys(per).filter((k) => !isNaN(per[k].rem) && per[k].n > per[k].rem);
     const r = await ask({
       title: list.length + '件をまとめて承認しますか？',
-      body: 'ジムは押さえましたか？ お客さんには1件ごとにSlackで確定連絡が届きます。' +
+      body: 'ジムは押さえましたか？ 確定連絡はお客さんごとに1通にまとめてSlackで届きます。' +
         (short.length ? '<div class="warn" style="margin:8px 0 0">' + short.map((k) => esc(k) + 'さんは残回数 ' + per[k].rem + '回に対して ' + per[k].n + '件選んでいます。足りない分は承認できません。').join('<br>') + '</div>' : ''),
       extra: '<ul class="pl">' + list.map((b) => '<li>' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.name) + 'さん｜' + esc(b.gym) + '</li>').join('') + '</ul>',
       buttons: [{ label: list.length + '件を承認する', value: 1 }] });
@@ -389,14 +389,33 @@
     working = true;
     document.querySelectorAll('[data-act],[data-pick]').forEach((x) => (x.disabled = true));
     const ok = [], ng = [];
+    // 同じお客さんを2件以上選んだときは、1件ずつの連絡は止めて、最後に1通にまとめて送る
+    const cnt = {};
+    list.forEach((b) => { cnt[b.customerId] = (cnt[b.customerId] || 0) + 1; });
+    const grouped = (b) => cnt[b.customerId] > 1;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       toast('承認中… ' + (i + 1) + ' / ' + list.length + '件目', 60000);
-      try { await call('apiApprove', ADMIN, b.id); ok.push(b); sel.delete(b.id); }
+      try { await call('apiApprove', ADMIN, b.id, grouped(b) ? { notify: false } : undefined); ok.push(b); sel.delete(b.id); }
       catch (e) { ng.push({ b, e: String(e) }); }
+    }
+    const quietOk = ok.filter(grouped);
+    let notifyNote = '';
+    if (quietOk.length) {
+      toast('確定連絡を送信中…', 60000);
+      try {
+        const res = await call('apiNotifyApprovedBatch', ADMIN, quietOk.map((b) => b.id));
+        if (res && res.failed && res.failed.length) notifyNote = res.text;
+      } catch (e) {
+        notifyNote = '※まとめての確定連絡を送れませんでした（' + String(e) + '）。次のお客さんには手動で連絡してください：' +
+          [...new Set(quietOk.map((b) => b.name))].join('、');
+      }
     }
     working = false;
     toast(ng.length ? '⚠ ' + ok.length + '件承認、' + ng.length + '件は承認できませんでした' : list.length + '件を承認しました', 6000);
+    if (notifyNote) {
+      await ask({ title: 'Slack連絡を確認してください', body: esc(notifyNote), buttons: [] });
+    }
     if (ng.length) {
       ask({ title: ok.length + '件承認／' + ng.length + '件は未承認',
         body: '下の予約は承認できませんでした。理由を確認して、1件ずつ対応してください。<br>（「送信結果を確認できませんでした」の場合、更新後に承認待ちから消えていれば承認済みです）',
