@@ -195,7 +195,7 @@ function doGet(e) {
  * body: {"fn":"apiSlots","args":[...]}  →  {"ok":true,"result":...} / {"ok":false,"error":"..."}
  */
 const PUBLIC_API_ = ['apiCustomerView', 'apiSlots', 'apiSlotsAll', 'apiRequest', 'apiAdminView', 'apiApprove',
-  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch'];
+  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending'];
 function doPost(e) {
   let out;
   try {
@@ -204,7 +204,7 @@ function doPost(e) {
     const fns = { apiCustomerView: apiCustomerView, apiSlots: apiSlots, apiSlotsAll: apiSlotsAll, apiRequest: apiRequest,
       apiAdminView: apiAdminView, apiApprove: apiApprove, apiReject: apiReject, apiCancel: apiCancel,
       apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule,
-      apiNotifyApprovedBatch: apiNotifyApprovedBatch };
+      apiNotifyApprovedBatch: apiNotifyApprovedBatch, apiCancelPending: apiCancelPending };
     out = { ok: true, result: fns[body.fn].apply(null, Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: err && err.message ? err.message : String(err) };
@@ -247,7 +247,7 @@ function apiCustomerView(token) {
         return upcoming.map(function (b) {
           const s = new Date(b['開始']), e = new Date(b['終了']);
           const g = gymById_(gyms, b['ジムID']);
-          return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: g ? g.name : b['ジムID'], status: b['状態'], day: dayKey_(s), start: isoJst_(s), end: isoJst_(e) };
+          return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: g ? g.name : b['ジムID'], status: b['状態'], day: dayKey_(s), start: isoJst_(s), end: isoJst_(e), id: b['状態'] === STATUS.PENDING ? b['予約ID'] : '' };
         });
       })()
     };
@@ -298,12 +298,40 @@ function calendarBookings_(c, gyms, st, now) {
       out.push({
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: place || '—',
         status: pend ? STATUS.PENDING : (e < now ? '済' : STATUS.CONFIRMED),
+        id: pend ? ((ep.private && ep.private.spId) || (ep.shared && ep.shared.spId) || '') : '', // 承認前ならお客さん自身で取り消せるように予約IDを渡す
         day: dayKey_(s), start: isoJst_(s), end: isoJst_(e)
       });
     });
     pageToken = res.nextPageToken;
   } while (pageToken);
   return out;
+}
+
+/**
+ * お客さん自身による取り消し（承認前の仮予約だけ）。回数券は消化していないので戻す処理はない。
+ * 承認後（確定）は取り消せない（ジムの予約・キャンセル料が絡むため、さんぽんに連絡してもらう）
+ */
+function apiCancelPending(token, bookingId) {
+  return guard_(function () {
+    return withLock_(function () {
+      const c = requireCustomer_(token);
+      const b = readRows_(SH.BOOKINGS).filter(function (x) { return x['予約ID'] === String(bookingId || ''); })[0];
+      if (!b || b['顧客ID'] !== c.id) fail_('予約が見つかりません。画面を再読み込みしてください。');
+      if (b['状態'] === STATUS.CONFIRMED) fail_('この予約はすでに確定しています。キャンセル・変更はSlackでさんぽんにご連絡ください。');
+      if (b['状態'] !== STATUS.PENDING) fail_('この予約はすでに「' + b['状態'] + '」になっています。');
+      const st = getSettings_();
+      try {
+        const ev = b['予定ID'] ? getCal_(st).getEventById(b['予定ID']) : null;
+        if (ev) ev.deleteEvent();
+      } catch (err) { Logger.log('仮予約の予定の削除に失敗: ' + err); }
+      updateCells_(SH.BOOKINGS, b._row, { '状態': STATUS.CANCELED, '処理日時': isoJst_(new Date()), '却下理由': 'お客さまが取り消し（承認前）' });
+      const s = new Date(b['開始']), e = new Date(b['終了']);
+      const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'] };
+      queueNotify_(':wastebasket: *仮予約の取り消し（お客さま操作）*\n' + c.name + 'さん｜' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '｜' + gym.name +
+        '\n承認前だったので回数券はそのままです。ジムを先に押さえていたら取り消してください。');
+      return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name };
+    });
+  });
 }
 
 function apiSlots(token, gymId) {
