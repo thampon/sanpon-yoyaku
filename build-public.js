@@ -66,7 +66,9 @@ const TARGETS = [
     head: [
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
       '<meta name="robots" content="noindex">',
-      '<title>予約管理｜さんぽんパーソナル</title>'
+      '<title>予約管理｜さんぽんパーソナル</title>',
+      '<link rel="icon" href="admin-icon.svg" type="image/svg+xml">',
+      '<link rel="apple-touch-icon" href="admin-apple-touch-icon.png">'
     ],
     token: ['  const ADMIN = <?!= JSON.stringify(adminToken) ?>;', "  const ADMIN = new URLSearchParams(location.search).get('admin') || '';"]
   }
