@@ -1481,6 +1481,13 @@ function updateCells_(name, rowNum, obj) {
 function appendRow_(name, obj) {
   const sh = sheet_(name);
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return String(h).trim(); });
+  // 後から追加した列（HEADERSにあってシートに無い列）は、書き込む値があれば見出しを自動で作る（値が黙って捨てられないように）
+  Object.keys(obj).forEach(function (k) {
+    if (head.indexOf(k) < 0 && HEADERS[name] && HEADERS[name].indexOf(k) >= 0 && obj[k] !== '' && obj[k] !== undefined && obj[k] !== null) {
+      sh.getRange(1, head.length + 1).setValue(k).setFontWeight('bold').setBackground('#e6efe0');
+      head.push(k);
+    }
+  });
   const row = sh.getLastRow() + 1;
   const values = head.map(function (h) { return obj[h] === undefined || obj[h] === null ? '' : String(obj[h]); });
   sh.getRange(row, 1, 1, head.length).setNumberFormat('@').setValues([values]);
