@@ -37,6 +37,7 @@
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
   .btn:disabled { opacity: .5; cursor: default; }
   .warn { background: #fdf0eb; border: 1px solid #f1c9b8; color: #7d3417; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .chgtag { margin: 0 0 6px; padding: 6px 10px; border-radius: 8px; background: #fbf1d6; color: #6b4e12; font-size: 12px; font-weight: 700; }
   .reqtag { margin: 0 0 -6px; padding: 8px 12px 12px; border-radius: 10px 10px 0 0; background: #fbf1d6; color: #6b4e12; font-size: 12px; font-weight: 700; }
   .warn ul { margin: 4px 0 0; padding-left: 18px; }
   .empty { color: var(--sub); text-align: center; padding: 32px 0; }
@@ -212,6 +213,7 @@
 
   function bookingCard(b, buttons) {
     return '<div class="card"><div class="row"><div>' +
+      (b.changeOf ? '<div class="chgtag">🔁 日時変更の申請（元：' + esc(b.changeOf) + '）承認すると元の予約は自動でキャンセル・回数は差し引きゼロ</div>' : '') +
       '<div class="title">' + esc(b.date) + ' ' + esc(b.time) + '</div>' +
       '<div>' + esc(b.name) + 'さん｜' + esc(b.gym) + '</div>' +
       '<div class="muted">' + (b.requestedAt ? '申請 ' + esc(b.requestedAt) + '｜' : '') + '残回数 ' + esc(b.remaining) + '回' + (b.past ? '｜<b style="color:var(--warn)">日時を過ぎています</b>' : '') + '</div>' +
@@ -404,8 +406,9 @@
     const ok = [], ng = [];
     // 同じお客さんを2件以上選んだときは、1件ずつの連絡は止めて、最後に1通にまとめて送る
     const cnt = {};
-    list.forEach((b) => { cnt[b.customerId] = (cnt[b.customerId] || 0) + 1; });
-    const grouped = (b) => cnt[b.customerId] > 1;
+    // 日時変更の申請は専用の「変更しました」連絡を1件ずつ送るので、まとめ連絡からは外す
+    list.forEach((b) => { if (!b.changeOf) cnt[b.customerId] = (cnt[b.customerId] || 0) + 1; });
+    const grouped = (b) => !b.changeOf && cnt[b.customerId] > 1;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       toast('承認中… ' + (i + 1) + ' / ' + list.length + '件目', 60000);

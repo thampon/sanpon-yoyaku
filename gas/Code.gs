@@ -30,7 +30,7 @@ const HEADERS = {
   'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン'],
   '移動時間': ['出発ジムID', '到着ジムID', '所要分'],
   '営業時間': ['曜日', '開始', '終了', '休み'],
-  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請'],
+  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元'],
   '回数券履歴': ['日時', '顧客ID', '氏名', '増減', '理由', '予約ID'],
   '設定': ['キー', '値', '説明']
 };
@@ -195,7 +195,7 @@ function doGet(e) {
  * body: {"fn":"apiSlots","args":[...]}  →  {"ok":true,"result":...} / {"ok":false,"error":"..."}
  */
 const PUBLIC_API_ = ['apiCustomerView', 'apiSlots', 'apiSlotsAll', 'apiRequest', 'apiAdminView', 'apiApprove',
-  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending', 'apiRequestCancel'];
+  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending', 'apiRequestCancel', 'apiRequestChange'];
 function doPost(e) {
   let out;
   try {
@@ -205,7 +205,7 @@ function doPost(e) {
       apiAdminView: apiAdminView, apiApprove: apiApprove, apiReject: apiReject, apiCancel: apiCancel,
       apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule,
       apiNotifyApprovedBatch: apiNotifyApprovedBatch, apiCancelPending: apiCancelPending,
-      apiRequestCancel: apiRequestCancel };
+      apiRequestCancel: apiRequestCancel, apiRequestChange: apiRequestChange };
     out = { ok: true, result: fns[body.fn].apply(null, Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: err && err.message ? err.message : String(err) };
@@ -227,7 +227,8 @@ function apiCustomerView(token) {
     const gyms = getGyms_();
     const now = new Date();
     const mine = readRows_(SH.BOOKINGS).filter(function (b) { return b['顧客ID'] === c.id; });
-    const pending = mine.filter(function (b) { return b['状態'] === STATUS.PENDING; }).length;
+    // 日時変更の申請（変更元あり）は回数を使わないので数えない
+    const pending = mine.filter(function (b) { return b['状態'] === STATUS.PENDING && !b['変更元']; }).length;
     const upcoming = mine.filter(function (b) {
       return (b['状態'] === STATUS.PENDING || b['状態'] === STATUS.CONFIRMED) && new Date(b['終了']) >= now;
     }).sort(byStart_);
@@ -247,7 +248,20 @@ function apiCustomerView(token) {
         // キャンセル・変更の申請中かどうかを付ける
         const reqOf = {};
         mine.forEach(function (b) { if (b['キャンセル申請'] && b['状態'] === STATUS.CONFIRMED) reqOf[b['予約ID']] = true; });
-        const mark = function (list) { list.forEach(function (x) { x.requested = !!(x.id && reqOf[x.id]); }); return list; };
+        // 日時変更の申請：元の予約には「→変更先」、変更先の仮予約には「元の予約」を付ける
+        const lbl = function (b) { const s = new Date(b['開始']); return fmtDay_(s) + ' ' + fmtTime_(s) + '〜'; };
+        const byId = {}, chgTo = {};
+        mine.forEach(function (b) { byId[b['予約ID']] = b; });
+        mine.forEach(function (b) { if (b['変更元'] && b['状態'] === STATUS.PENDING) chgTo[b['変更元']] = lbl(b); });
+        const mark = function (list) {
+          list.forEach(function (x) {
+            x.requested = !!(x.id && reqOf[x.id]);
+            if (x.id && chgTo[x.id]) x.changeTo = chgTo[x.id];
+            const row = x.id && byId[x.id];
+            if (row && row['変更元'] && byId[row['変更元']]) x.changeFrom = lbl(byId[row['変更元']]);
+          });
+          return list;
+        };
         try { return mark(calendarBookings_(c, gyms, st, now)); } catch (err) { Logger.log('カレンダーからの予約状況取得に失敗: ' + err); }
         return mark(upcoming.map(function (b) {
           const s = new Date(b['開始']), e = new Date(b['終了']);
@@ -333,7 +347,7 @@ function apiCancelPending(token, bookingId) {
       updateCells_(SH.BOOKINGS, b._row, { '状態': STATUS.CANCELED, '処理日時': isoJst_(new Date()), '却下理由': 'お客さまが取り消し（承認前）' });
       const s = new Date(b['開始']), e = new Date(b['終了']);
       const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'] };
-      queueNotify_(':wastebasket: *仮予約の取り消し（お客さま操作）*\n' + c.name + 'さん｜' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '｜' + gym.name +
+      queueNotify_(':wastebasket: *' + (b['変更元'] ? '日時変更の申請の取り消し（元の予約はそのまま）' : '仮予約の取り消し') + '（お客さま操作）*\n' + c.name + 'さん｜' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '｜' + gym.name +
         '\n承認前だったので回数券はそのままです。ジムを先に押さえていたら取り消してください。');
       return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name };
     });
@@ -509,6 +523,68 @@ function patchSlotsCache_(s, e) {
   } catch (err) { clearSlotsCache_(); }
 }
 
+/** その顧客がその枠をいま予約できるか、カレンダーを読み直して確かめる（申請時の二重予約防止） */
+function checkSlotFree_(c, gym, s, st, gyms) {
+  const len = lenOf_(c, st);
+  const range = bookingRange_(st, new Date());
+  const dayFrom = new Date(dayKey_(s) + 'T00:00:00+09:00');
+  const dayTo = new Date(dayFrom.getTime() + 86400000 - 1);
+  const from = new Date(Math.max(range.from.getTime(), dayFrom.getTime()));
+  const to = new Date(Math.min(range.to.getTime(), dayTo.getTime()));
+  if (from > to) fail_('この日時は受付期間外です。');
+  if (c.until && s.getTime() > c.until.getTime()) fail_(fmtDay_(c.until) + 'より後の日時は予約できません。');
+  const busy = loadBusy_(getCal_(st), from, to, st, gyms).concat(loadGymCal_(gym, from, to));
+  const days = buildSlots_(gym.id, st, busy, travelFn_(st), getHours_(), from, to);
+  const ok = forLength_(days, len, st).some(function (d) {
+    return d.times.some(function (t) { return new Date(t.start).getTime() === s.getTime(); });
+  });
+  if (!ok) fail_('選んだ枠はたった今埋まってしまいました。別の枠をお選びください。');
+  return new Date(s.getTime() + len * 60000);
+}
+
+/**
+ * 確定予約の日時変更の申請（お客さん操作）。変更先を「仮予約（変更元つき）」として入れる。回数は使わない。
+ * 元の予約は確定のまま。さんぽんが変更先を承認すると、元の予約は自動でキャンセルになる（apiApprove）
+ */
+function apiRequestChange(token, fromId, gymId, startIso) {
+  return guard_(function () {
+    return withLock_(function () {
+      const c = requireCustomer_(token);
+      const st = getSettings_();
+      const gyms = getGyms_();
+      const rows = readRows_(SH.BOOKINGS);
+      const orig = rows.filter(function (x) { return x['予約ID'] === String(fromId || ''); })[0];
+      if (!orig || orig['顧客ID'] !== c.id) fail_('変更元の予約が見つかりません。画面を再読み込みしてください。');
+      if (orig['状態'] !== STATUS.CONFIRMED) fail_('変更できるのは確定済みの予約だけです（承認待ちは「取り消す」から取り消して、取り直してください）。');
+      const s0 = new Date(orig['開始']), e0 = new Date(orig['終了']);
+      if (e0.getTime() < Date.now()) fail_('終わったセッションは変更できません。');
+      if (rows.some(function (x) { return x['変更元'] === orig['予約ID'] && x['状態'] === STATUS.PENDING; })) {
+        fail_('この予約はすでに変更を申請中です。変更先を選び直すときは、変更先の「取り消す」を押してから選んでください。');
+      }
+      const gym = gymById_(gyms, gymId);
+      if (!gym || !gym.active || c.gymIds.indexOf(gym.id) < 0) fail_('このジムは選択できません。');
+      const s = new Date(startIso);
+      if (isNaN(s.getTime())) fail_('日時が正しくありません。');
+      if (s.getTime() === s0.getTime() && gym.id === orig['ジムID']) fail_('今の予約と同じ日時・場所です。');
+      const e = checkSlotFree_(c, gym, s, st, gyms);
+
+      const id = 'B' + Utilities.formatDate(new Date(), TZ, 'yyMMddHHmmss') + Math.floor(Math.random() * 900 + 100);
+      const evId = createPendingEvent_(st, c, gym, id, s, e);
+      appendRow_(SH.BOOKINGS, {
+        '予約ID': id, '顧客ID': c.id, '氏名': c.name, 'ジムID': gym.id,
+        '開始': isoJst_(s), '終了': isoJst_(e), '状態': STATUS.PENDING, '予定ID': evId,
+        '申請日時': isoJst_(new Date()), '変更元': orig['予約ID']
+      });
+      const gym0 = gymById_(gyms, orig['ジムID']) || { name: orig['ジムID'] };
+      queueNotify_(':arrows_counterclockwise: *日時変更の申請*\n' + c.name + 'さん｜' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜（' + gym0.name + '）\n　→ ' +
+        fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '（' + gym.name + '）\n' +
+        '新しい日時のジムを押さえたら承認してください（元の予約は自動でキャンセル・回数は差し引きゼロ） → ' + adminUrl_());
+      patchSlotsCache_(s, e);
+      return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name, from: fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' };
+    });
+  });
+}
+
 function apiRequest(token, gymId, startIso) {
   return guard_(function () {
     return withLock_(function () {
@@ -519,7 +595,7 @@ function apiRequest(token, gymId, startIso) {
       if (!gym || !gym.active || c.gymIds.indexOf(gym.id) < 0) fail_('このジムは選択できません。');
 
       const pending = readRows_(SH.BOOKINGS).filter(function (b) {
-        return b['顧客ID'] === c.id && b['状態'] === STATUS.PENDING;
+        return b['顧客ID'] === c.id && b['状態'] === STATUS.PENDING && !b['変更元'];
       }).length;
       if (c.remaining - pending <= 0) fail_('予約できる残り回数がありません。トレーナーにご相談ください。');
       if (pending >= st.maxPending) fail_('仮予約は同時に' + st.maxPending + '件までです。確定をお待ちください。');
@@ -586,7 +662,12 @@ function apiAdminView(adminToken) {
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), status: b['状態'],
         requestedAt: b['申請日時'] ? fmtDay_(new Date(b['申請日時'])) + ' ' + fmtTime_(new Date(b['申請日時'])) : '',
         remaining: remainingOf(b['顧客ID']), past: e < now,
-        cancelRequest: b['キャンセル申請'] || ''
+        cancelRequest: b['キャンセル申請'] || '',
+        changeOf: (function () {
+          if (!b['変更元']) return '';
+          const o = bookings.filter(function (x) { return x['予約ID'] === b['変更元']; })[0];
+          return o ? fmtDay_(new Date(o['開始'])) + ' ' + fmtTime_(new Date(o['開始'])) + '〜｜' + gymName(o['ジムID']) : b['変更元'];
+        })()
       };
     };
 
@@ -657,7 +738,10 @@ function apiApprove(adminToken, bookingId, change) {
       const b = requireBooking_(bookingId);
       if (b['状態'] !== STATUS.PENDING) fail_('この予約は既に「' + b['状態'] + '」です。');
       const c = requireCustomerById_(b['顧客ID']);
-      if (c.remaining <= 0) fail_(c.name + 'さんの残回数が0です。先に回数券を追加してください。');
+      // 日時変更の申請なら、変更元の確定予約（承認したら自動でキャンセルする）
+      const chgOf = b['変更元'] ? readRows_(SH.BOOKINGS).filter(function (x) { return x['予約ID'] === b['変更元']; })[0] : null;
+      if (b['変更元'] && (!chgOf || chgOf['状態'] !== STATUS.CONFIRMED)) fail_('変更元の予約が確定のままではありません（すでにキャンセル済みなど）。この申請は却下してください。');
+      if (!chgOf && c.remaining <= 0) fail_(c.name + 'さんの残回数が0です。先に回数券を追加してください。');
       const cal = getCal_(st);
       const ev = b['予定ID'] ? cal.getEventById(b['予定ID']) : null;
       if (!ev) fail_('カレンダーに仮予定が見つかりません（手動で削除された可能性）。却下で処理してください。');
@@ -713,11 +797,35 @@ function apiApprove(adminToken, bookingId, change) {
       if (changed) { upd['開始'] = isoJst_(s); upd['終了'] = isoJst_(e); upd['ジムID'] = gym.id; }
       updateCells_(SH.BOOKINGS, b._row, upd);
       if (changed) patchSlotsCache_(s, e); // 新しい時間を空き枠から外す（元の時間は10分ごとの更新で戻る）
-      const rem = c.remaining - 1;
-      updateCells_(SH.CUSTOMERS, c._row, { '残回数': rem });
-      appendRow_(SH.TICKETS, { '日時': now, '顧客ID': c.id, '氏名': c.name, '増減': -1, '理由': '消化', '予約ID': b['予約ID'] });
+      let rem = c.remaining;
+      if (chgOf) {
+        // 日時変更：回数は動かさない（元の予約で消化済みの1回を、新しい日時に付け替える）。元の予約はキャンセル扱いにして予定を消す
+        updateCells_(SH.BOOKINGS, b._row, { '回数戻し': '' });
+        updateCells_(SH.BOOKINGS, chgOf._row, { '状態': STATUS.CANCELED, '処理日時': now, '回数戻し': 'FALSE', '却下理由': '日時変更（→' + b['予約ID'] + '）', 'キャンセル申請': '' });
+        try { const oev = chgOf['予定ID'] ? cal.getEventById(chgOf['予定ID']) : null; if (oev) oev.deleteEvent(); } catch (err) { Logger.log('変更元の予定の削除に失敗: ' + err); }
+        if (chgOf['ジム予定ID']) {
+          try {
+            const og = gymById_(gyms, chgOf['ジムID']);
+            const rev = og && og.checkCal ? CalendarApp.getCalendarById(og.checkCal).getEventById(chgOf['ジム予定ID']) : null;
+            if (rev) rev.deleteEvent();
+          } catch (err) { Logger.log('変更元のジム予定の削除に失敗: ' + err); }
+        }
+        appendRow_(SH.TICKETS, { '日時': now, '顧客ID': c.id, '氏名': c.name, '増減': 0, '理由': '日時変更（' + chgOf['予約ID'] + '→' + b['予約ID'] + '）', '予約ID': b['予約ID'] });
+      } else {
+        rem = c.remaining - 1;
+        updateCells_(SH.CUSTOMERS, c._row, { '残回数': rem });
+        appendRow_(SH.TICKETS, { '日時': now, '顧客ID': c.id, '氏名': c.name, '増減': -1, '理由': '消化', '予約ID': b['予約ID'] });
+      }
 
       const quiet = !!(change && change.notify === false);
+      if (chgOf) {
+        const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
+        const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
+        const sentC = quiet ? null : sendCustomer_(c, c.name + 'さん\nご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + gym.name + (gym.address ? '\n住所：' + gym.address : '') + '\n残り回数：' + rem + '回\n\n当日お待ちしています！');
+        return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
+          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC));
+      }
       const sent = quiet ? null : sendCustomer_(c, fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: gym.name, address: gym.address, remaining: rem
@@ -792,6 +900,14 @@ function apiReject(adminToken, bookingId, reason) {
 
       const s = new Date(b['開始']), e = new Date(b['終了']);
       const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'], address: '' };
+      if (b['変更元']) {
+        const ob = readRows_(SH.BOOKINGS).filter(function (x) { return x['予約ID'] === b['変更元']; })[0];
+        const os = ob ? new Date(ob['開始']) : null;
+        const sentC = sendCustomer_(c, c.name + 'さん\nご希望の変更先 ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜（' + gym.name + '）は、ジムの空きが確保できずお受けできませんでした。' +
+          (reason ? '（' + reason + '）' : '') + '\n' + (os ? '元のご予約 ' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 はそのままです。' : '') +
+          '\n別の日時に変更する場合は、もう一度予約ページからお選びください。\n' + customerUrl_(c.token));
+        return '変更の申請を却下しました（元の予約はそのまま）。' + sentNote_(sentC);
+      }
       const sent = sendCustomer_(c, fill_(st.tplReject, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name,
         address: gym.address, reason: reason ? '（' + reason + '）' : '', url: customerUrl_(c.token), remaining: c.remaining

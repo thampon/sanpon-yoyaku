@@ -256,6 +256,8 @@
   .bk-x { display:inline-block; margin:0 0 0 auto; min-height:32px; padding:4px 10px; border:1px solid #D9C9A3; border-radius:8px; background:#fff; color:#806025; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer; }
   .bk-x.sure { background:#B4532A; border-color:#B4532A; color:#fff; }
   .bk-x:disabled { opacity:.6; cursor:default; }
+  .note.chg { background:#fbf1d6; color:#6b4e12; }
+  .note.chg .bk-x { display:block; margin:8px 0 0 auto; }
   .bk-note { display:block; width:100%; box-sizing:border-box; margin:0 0 8px; padding:9px 10px; border:1px solid #D9C9A3; border-radius:8px; font:inherit; font-size:16px; line-height:1.5; resize:vertical; text-align:left; }
   .bk-rq { color:#806025; font-size:11px; font-weight:700; }
   .bk-err { margin-top:4px; color:#B4532A; font-size:11px; text-align:right; }
@@ -282,6 +284,7 @@
   const TOKEN = <?!= JSON.stringify(token) ?>;
   const DAYS_PER_PAGE = 10;
   let view = null, gymId = null, slots = [], shown = DAYS_PER_PAGE, picked = null, busy = false;
+  let changing = null; // 日時変更中の元の予約 { id, label, gym }
 
   let slotsByGym = {}, slotsAllP = null; // ページを開いた瞬間に全ジムの空き枠を裏で取りにいく
   let groups = [], groupKey = null; // 「南青山 / 六本木」のように複数ジムを1つのボタンにまとめたもの
@@ -324,7 +327,7 @@
     gymId = null; picked = null;
     slots = []; shown = DAYS_PER_PAGE;
     render();
-    if (groupKey && view.bookable > 0) loadSlots();
+    if (groupKey && (view.bookable > 0 || changing)) loadSlots();
   }
 
   async function load(pre) {
@@ -371,19 +374,25 @@
       v.bookings.forEach((b) => {
         const done = b.status === '済', ok = b.status === '確定';
         h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + ' <span class="t">' + esc(String(b.time).split('〜')[0]) + '〜</span></td><td class="g">' + esc(b.gym) + '</td>' +
-          '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : '承認待ち') + '</span></td></tr>';
+          '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : b.changeFrom ? '変更先' : '承認待ち') + '</span></td></tr>';
         // 取り消し・申請のボタンは、日付やジム名を狭くしないよう下の行に出す
-        const act = (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') +
-          (ok && b.id && !b.requested ? '<button type="button" class="bk-x" data-rq="' + esc(b.id) + '">キャンセル・変更</button>' : '') +
-          (ok && b.requested ? '<span class="bk-rq">キャンセル・変更を申請済み（連絡をお待ちください）</span>' : '');
+        const act = (b.changeFrom ? '<span class="bk-rq">' + esc(b.changeFrom) + ' からの変更（承認待ち）</span> ' : '') +
+          (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') +
+          (ok && b.changeTo ? '<span class="bk-rq">' + esc(b.changeTo) + ' に変更を申請中</span>' : '') +
+          (ok && b.id && !b.requested && !b.changeTo ? '<button type="button" class="bk-x" data-rq="' + esc(b.id) + '" data-lbl="' + esc(b.date + ' ' + String(b.time).split('〜')[0] + '〜') + '" data-gymname="' + esc(b.gym) + '">キャンセル・変更</button>' : '') +
+          (ok && b.requested ? '<span class="bk-rq">キャンセルを申請済み（連絡をお待ちください）</span>' : '');
         if (act) h += '<tr class="bk-act"><td colspan="3">' + act + '</td></tr>';
       });
       h += '</tbody></table>';
     }
     h += '</div>';
 
-    h += '<h2 class="newh" id="newbk">新しく予約する</h2>';
-    if (v.bookable <= 0) {
+    h += '<h2 class="newh" id="newbk">' + (changing ? '変更先を選ぶ' : '新しく予約する') + '</h2>';
+    if (changing) {
+      h += '<div class="note chg"><b>' + esc(changing.label) + '（' + esc(changing.gym) + '）</b>の変更先を選んでください。さんぽんが承認するまでは、今の予約のままです。' +
+        '<button type="button" class="bk-x" id="chgStop">変更をやめる</button></div>';
+      h += '<div id="slots"></div>';
+    } else if (v.bookable <= 0) {
       const reason = v.remaining - v.pending <= 0
         ? '予約できる回数が残っていません。続けてのご利用はトレーナーにご相談ください。'
         : '承認待ちの仮予約が上限（' + v.maxPending + '件）に達しています。確定のご連絡をお待ちください。';
@@ -420,32 +429,38 @@
       }
     }));
 
-    // 確定後のキャンセル・変更の申請（さんぽんが確認して連絡する）
-    document.querySelectorAll('[data-rq]').forEach((el) => el.addEventListener('click', async () => {
-      if (el.disabled) return;
-      if (!el.classList.contains('sure')) {
-        document.querySelectorAll('[data-rq].sure,[data-cx].sure').forEach((x) => { x.classList.remove('sure'); x.textContent = x.hasAttribute('data-rq') ? 'キャンセル・変更' : '取り消す'; });
-        document.querySelectorAll('.bk-note').forEach((x) => x.remove());
-        el.classList.add('sure'); el.textContent = 'さんぽんに申請する';
-        // ひとこと欄（書かなくても申請できる）
-        el.insertAdjacentHTML('beforebegin', '<textarea class="bk-note" maxlength="200" rows="2" placeholder="ひとこと（任意）例：体調不良のためキャンセルしたいです／12/11（金）の同じ時間に変更できますか"></textarea>');
-        return;
-      }
-      el.disabled = true; el.textContent = '送信中…';
-      try {
-        const noteEl = el.parentNode.querySelector('.bk-note');
-        const r = await call('apiRequestCancel', TOKEN, el.getAttribute('data-rq'), noteEl ? noteEl.value : '');
-        if (noteEl) noteEl.remove();
-        el.outerHTML = '<span class="bk-rq">キャンセル・変更を申請済み（連絡をお待ちください）</span>';
-        try { localStorage.removeItem(CKEY); } catch (e) {}
-        const box = $('app');
-        if (box) box.insertAdjacentHTML('afterbegin', '<div class="note" style="margin-bottom:12px">' + esc(r.date + ' ' + r.time + '（' + r.gym + '）') +
-          'のキャンセル・変更をさんぽんに申請しました。内容を確認して、Slackでご連絡します。</div>');
-      } catch (e) {
-        el.disabled = false; el.classList.remove('sure'); el.textContent = 'キャンセル・変更';
-        el.closest('td').insertAdjacentHTML('beforeend', '<div class="bk-err">' + esc(e) + '</div>');
-      }
+    // 確定後：「日時を変更する」（予約画面で変更先を選ぶ）か「キャンセルする」（ひとこと付きで申請）
+    document.querySelectorAll('[data-rq]').forEach((el) => el.addEventListener('click', () => {
+      const td = el.closest('td'), id = el.getAttribute('data-rq'), lbl = el.getAttribute('data-lbl'), gname = el.getAttribute('data-gymname');
+      td.innerHTML = '<button type="button" class="bk-x" data-chg>日時を変更する</button> <button type="button" class="bk-x" data-cxl>キャンセルする</button>';
+      td.querySelector('[data-chg]').addEventListener('click', () => {
+        changing = { id, label: lbl, gym: gname };
+        showView();
+        const nb = $('newbk'); if (nb) nb.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      td.querySelector('[data-cxl]').addEventListener('click', () => {
+        td.innerHTML = '<textarea class="bk-note" maxlength="200" rows="2" placeholder="ひとこと（任意）例：体調不良のため"></textarea>' +
+          '<button type="button" class="bk-x sure" data-send>キャンセルを申請する</button>';
+        const send = td.querySelector('[data-send]');
+        send.addEventListener('click', async () => {
+          if (send.disabled) return;
+          send.disabled = true; send.textContent = '送信中…';
+          try {
+            const r = await call('apiRequestCancel', TOKEN, id, td.querySelector('.bk-note').value);
+            td.innerHTML = '<span class="bk-rq">キャンセルを申請済み（連絡をお待ちください）</span>';
+            try { localStorage.removeItem(CKEY); } catch (e) {}
+            const box = $('app');
+            if (box) box.insertAdjacentHTML('afterbegin', '<div class="note" style="margin-bottom:12px">' + esc(r.date + ' ' + r.time + '（' + r.gym + '）') +
+              'のキャンセルをさんぽんに申請しました。内容を確認して、Slackでご連絡します。</div>');
+          } catch (e) {
+            send.disabled = false; send.textContent = 'キャンセルを申請する';
+            td.insertAdjacentHTML('beforeend', '<div class="bk-err">' + esc(e) + '</div>');
+          }
+        });
+      });
     }));
+    const stop = $('chgStop');
+    if (stop) stop.addEventListener('click', () => { changing = null; showView(); });
 
     document.querySelectorAll('[data-gym]').forEach((el) => el.addEventListener('click', () => {
       groupKey = el.getAttribute('data-gym'); gymId = null;
@@ -626,6 +641,7 @@
       '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + (view.gyms.some((x) => x.id === id && x.preferred) ? '<span class="tag">優先</span>' : '') + '</button>').join('') : '';
     place.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { gymId = b.getAttribute('data-place'); renderBar(); }));
     $('reqBtn').disabled = !gymId;
+    $('reqBtn').textContent = changing ? 'この日時に変更を申請する' : 'この日時で仮予約する';
   }
 
   $('reqBtn').addEventListener('click', async () => {
@@ -633,7 +649,9 @@
     busy = true; $('reqBtn').disabled = true; $('reqBtn').textContent = '送信中…（数秒かかります）';
     try {
       const bookedStart = new Date(picked.start).getTime();
-      const r = await call('apiRequest', TOKEN, gymId, picked.start);
+      const wasChange = changing;
+      const r = wasChange ? await call('apiRequestChange', TOKEN, wasChange.id, gymId, picked.start) : await call('apiRequest', TOKEN, gymId, picked.start);
+      changing = null;
       // 次の予約に備えて、裏で予約状況を取り直しておく。空き枠は手元の一覧から今入れた時間の前後だけ外す
       const viewP = call('apiCustomerView', TOKEN); viewP.catch(() => {});
       const len = ((view && view.sessionMin) || 60) * 60000, buf = 60 * 60000;
@@ -644,9 +662,10 @@
       });
       hideBar();
       $('app').innerHTML = '<div class="done"><div class="check">✓</div>' +
-        '<div class="hello">仮予約を受け付けました</div>' +
+        '<div class="hello">' + (wasChange ? '日時変更を申請しました' : '仮予約を受け付けました') + '</div>' +
+        (wasChange ? '<div class="muted" style="margin-bottom:6px">' + esc(wasChange.label) + ' から</div>' : '') +
         '<div class="card" style="text-align:left"><b>' + esc(r.date) + '</b> ' + esc(r.time) + '<div class="muted">' + esc(r.gym) + '</div></div>' +
-        '<p class="muted">ジムの空きを確認して、トレーナーが確定します。確定したらSlackでお知らせします。</p>' +
+        '<p class="muted">' + (wasChange ? 'ジムの空きを確認して、トレーナーが確定します。確定するまでは今の予約のままです。確定したらSlackでお知らせします。' : 'ジムの空きを確認して、トレーナーが確定します。確定したらSlackでお知らせします。') + '</p>' +
         '<button class="btn ghost" id="backBtn">予約画面に戻る</button></div>';
       $('backBtn').addEventListener('click', () => load({ viewP }));
     } catch (e) {
@@ -657,7 +676,7 @@
       const box = $('slots');
       if (box) box.insertAdjacentHTML('afterbegin', '<div class="err">' + esc(e) + '</div>');
     } finally {
-      busy = false; $('reqBtn').disabled = false; $('reqBtn').textContent = 'この日時で仮予約する';
+      busy = false; $('reqBtn').disabled = false; $('reqBtn').textContent = changing ? 'この日時に変更を申請する' : 'この日時で仮予約する';
       if (picked) renderBar();
     }
   });
