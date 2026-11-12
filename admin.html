@@ -37,6 +37,7 @@
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
   .btn:disabled { opacity: .5; cursor: default; }
   .warn { background: #fdf0eb; border: 1px solid #f1c9b8; color: #7d3417; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .reqtag { margin: 0 0 -6px; padding: 8px 12px 12px; border-radius: 10px 10px 0 0; background: #fbf1d6; color: #6b4e12; font-size: 12px; font-weight: 700; }
   .warn ul { margin: 4px 0 0; padding-left: 18px; }
   .empty { color: var(--sub); text-align: center; padding: 32px 0; }
   .num { font-size: 22px; font-weight: 700; color: var(--green); line-height: 1; }
@@ -202,6 +203,8 @@
     $('warnings').innerHTML = data.warnings.length
       ? '<div class="warn"><b>カレンダーとのズレ・要対応</b><ul><li>' + data.warnings.map(esc).join('</li><li>') + '</li></ul></div>' : '';
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
+    const rq = data.upcoming.filter((b) => b.cancelRequest).length, ut = document.querySelector('.tab[data-tab="upcoming"]');
+    if (ut) ut.innerHTML = '確定予約' + (rq ? ' <span class="badge">' + rq + '</span>' : '');
     if (tab === 'pending') renderPending();
     else if (tab === 'upcoming') renderUpcoming();
     else renderCustomers();
@@ -240,9 +243,17 @@
 
   function renderUpcoming() {
     if (!data.upcoming.length) { $('content').innerHTML = '<div class="empty">確定済みの予約はありません。</div>'; return; }
-    $('content').innerHTML = data.upcoming.map((b) => bookingCard(b,
+    const reqs = data.upcoming.filter((b) => b.cancelRequest).length;
+    $('content').innerHTML = (reqs ? '<div class="warn"><b>キャンセル・変更の申請が ' + reqs + '件あります</b>（下の黄色の予約）。キャンセル（回数を戻す／消化）か、日時・場所の変更を選んでください。</div>' : '') +
+      data.upcoming.slice().sort((a, b) => (b.cancelRequest ? 1 : 0) - (a.cancelRequest ? 1 : 0)).map((b) => (b.cancelRequest ? reqBanner(b) : '') + bookingCard(b,
       (data.gyms && b.day ? '<button class="btn sub" data-act="move" data-id="' + esc(b.id) + '">日時・場所を変更</button>' : '') +
       '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセルする</button>')).join('');
+  }
+  function reqBanner(b) {
+    const parts = String(b.cancelRequest).split('｜');
+    const at = parts[0] ? new Date(parts[0]) : null;
+    const when = at && !isNaN(at) ? (at.getMonth() + 1) + '/' + at.getDate() + ' ' + at.getHours() + ':' + String(at.getMinutes()).padStart(2, '0') : '';
+    return '<div class="reqtag">🔁 お客さんからキャンセル・変更の申請' + (when ? '（' + esc(when) + '）' : '') + (parts[1] ? '：' + esc(parts.slice(1).join('｜')) : '') + '</div>';
   }
 
   function renderCustomers() {
@@ -383,7 +394,7 @@
     const short = Object.keys(per).filter((k) => !isNaN(per[k].rem) && per[k].n > per[k].rem);
     const r = await ask({
       title: list.length + '件をまとめて承認しますか？',
-      body: 'ジムは押さえましたか？ お客さんには1件ごとにSlackで確定連絡が届きます。' +
+      body: 'ジムは押さえましたか？ 確定連絡はお客さんごとに1通にまとめてSlackで届きます。' +
         (short.length ? '<div class="warn" style="margin:8px 0 0">' + short.map((k) => esc(k) + 'さんは残回数 ' + per[k].rem + '回に対して ' + per[k].n + '件選んでいます。足りない分は承認できません。').join('<br>') + '</div>' : ''),
       extra: '<ul class="pl">' + list.map((b) => '<li>' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.name) + 'さん｜' + esc(b.gym) + '</li>').join('') + '</ul>',
       buttons: [{ label: list.length + '件を承認する', value: 1 }] });
@@ -391,14 +402,33 @@
     working = true;
     document.querySelectorAll('[data-act],[data-pick]').forEach((x) => (x.disabled = true));
     const ok = [], ng = [];
+    // 同じお客さんを2件以上選んだときは、1件ずつの連絡は止めて、最後に1通にまとめて送る
+    const cnt = {};
+    list.forEach((b) => { cnt[b.customerId] = (cnt[b.customerId] || 0) + 1; });
+    const grouped = (b) => cnt[b.customerId] > 1;
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
       toast('承認中… ' + (i + 1) + ' / ' + list.length + '件目', 60000);
-      try { await call('apiApprove', ADMIN, b.id); ok.push(b); sel.delete(b.id); }
+      try { await call('apiApprove', ADMIN, b.id, grouped(b) ? { notify: false } : undefined); ok.push(b); sel.delete(b.id); }
       catch (e) { ng.push({ b, e: String(e) }); }
+    }
+    const quietOk = ok.filter(grouped);
+    let notifyNote = '';
+    if (quietOk.length) {
+      toast('確定連絡を送信中…', 60000);
+      try {
+        const res = await call('apiNotifyApprovedBatch', ADMIN, quietOk.map((b) => b.id));
+        if (res && res.failed && res.failed.length) notifyNote = res.text;
+      } catch (e) {
+        notifyNote = '※まとめての確定連絡を送れませんでした（' + String(e) + '）。次のお客さんには手動で連絡してください：' +
+          [...new Set(quietOk.map((b) => b.name))].join('、');
+      }
     }
     working = false;
     toast(ng.length ? '⚠ ' + ok.length + '件承認、' + ng.length + '件は承認できませんでした' : list.length + '件を承認しました', 6000);
+    if (notifyNote) {
+      await ask({ title: 'Slack連絡を確認してください', body: esc(notifyNote), buttons: [] });
+    }
     if (ng.length) {
       ask({ title: ok.length + '件承認／' + ng.length + '件は未承認',
         body: '下の予約は承認できませんでした。理由を確認して、1件ずつ対応してください。<br>（「送信結果を確認できませんでした」の場合、更新後に承認待ちから消えていれば承認済みです）',

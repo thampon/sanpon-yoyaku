@@ -30,7 +30,7 @@ const HEADERS = {
   'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン'],
   '移動時間': ['出発ジムID', '到着ジムID', '所要分'],
   '営業時間': ['曜日', '開始', '終了', '休み'],
-  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID'],
+  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請'],
   '回数券履歴': ['日時', '顧客ID', '氏名', '増減', '理由', '予約ID'],
   '設定': ['キー', '値', '説明']
 };
@@ -195,7 +195,7 @@ function doGet(e) {
  * body: {"fn":"apiSlots","args":[...]}  →  {"ok":true,"result":...} / {"ok":false,"error":"..."}
  */
 const PUBLIC_API_ = ['apiCustomerView', 'apiSlots', 'apiSlotsAll', 'apiRequest', 'apiAdminView', 'apiApprove',
-  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending'];
+  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending', 'apiRequestCancel'];
 function doPost(e) {
   let out;
   try {
@@ -204,7 +204,8 @@ function doPost(e) {
     const fns = { apiCustomerView: apiCustomerView, apiSlots: apiSlots, apiSlotsAll: apiSlotsAll, apiRequest: apiRequest,
       apiAdminView: apiAdminView, apiApprove: apiApprove, apiReject: apiReject, apiCancel: apiCancel,
       apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule,
-      apiNotifyApprovedBatch: apiNotifyApprovedBatch, apiCancelPending: apiCancelPending };
+      apiNotifyApprovedBatch: apiNotifyApprovedBatch, apiCancelPending: apiCancelPending,
+      apiRequestCancel: apiRequestCancel };
     out = { ok: true, result: fns[body.fn].apply(null, Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: err && err.message ? err.message : String(err) };
@@ -243,12 +244,16 @@ function apiCustomerView(token) {
         .map(function (g) { return { id: g.id, name: g.name, address: g.address, group: g.group, preferred: g.id === c.prefer }; }),
       // 予約状況：今月1日以降のセッションをカレンダーから（システム導入前に手で入れた分も含む）。取れなければ予約シートの今後分
       bookings: (function () {
-        try { return calendarBookings_(c, gyms, st, now); } catch (err) { Logger.log('カレンダーからの予約状況取得に失敗: ' + err); }
-        return upcoming.map(function (b) {
+        // キャンセル・変更の申請中かどうかを付ける
+        const reqOf = {};
+        mine.forEach(function (b) { if (b['キャンセル申請'] && b['状態'] === STATUS.CONFIRMED) reqOf[b['予約ID']] = true; });
+        const mark = function (list) { list.forEach(function (x) { x.requested = !!(x.id && reqOf[x.id]); }); return list; };
+        try { return mark(calendarBookings_(c, gyms, st, now)); } catch (err) { Logger.log('カレンダーからの予約状況取得に失敗: ' + err); }
+        return mark(upcoming.map(function (b) {
           const s = new Date(b['開始']), e = new Date(b['終了']);
           const g = gymById_(gyms, b['ジムID']);
-          return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: g ? g.name : b['ジムID'], status: b['状態'], day: dayKey_(s), start: isoJst_(s), end: isoJst_(e), id: b['状態'] === STATUS.PENDING ? b['予約ID'] : '' };
-        });
+          return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: g ? g.name : b['ジムID'], status: b['状態'], day: dayKey_(s), start: isoJst_(s), end: isoJst_(e), id: b['予約ID'] };
+        }));
       })()
     };
   });
@@ -298,7 +303,8 @@ function calendarBookings_(c, gyms, st, now) {
       out.push({
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: place || '—',
         status: pend ? STATUS.PENDING : (e < now ? '済' : STATUS.CONFIRMED),
-        id: pend ? ((ep.private && ep.private.spId) || (ep.shared && ep.shared.spId) || '') : '', // 承認前ならお客さん自身で取り消せるように予約IDを渡す
+        // 予約ID：承認前は「取り消す」、確定後は「キャンセル・変更を申請」に使う（手で入れた予定には無い）
+        id: e < now ? '' : ((ep.private && ep.private.spId) || (ep.shared && ep.shared.spId) || ''),
         day: dayKey_(s), start: isoJst_(s), end: isoJst_(e)
       });
     });
@@ -330,6 +336,41 @@ function apiCancelPending(token, bookingId) {
       queueNotify_(':wastebasket: *仮予約の取り消し（お客さま操作）*\n' + c.name + 'さん｜' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '｜' + gym.name +
         '\n承認前だったので回数券はそのままです。ジムを先に押さえていたら取り消してください。');
       return { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name };
+    });
+  });
+}
+
+/**
+ * 確定後のキャンセル・変更の申請（お客さん操作）。予約はまだ確定のまま。さんぽんにSlackで知らせ、
+ * さんぽんが管理画面で「キャンセル（回数を戻す／消化）」か「日時・場所を変更」を選ぶ（回数の基準は決めず都度判断）
+ */
+function apiRequestCancel(token, bookingId, note) {
+  return guard_(function () {
+    return withLock_(function () {
+      const c = requireCustomer_(token);
+      const b = readRows_(SH.BOOKINGS).filter(function (x) { return x['予約ID'] === String(bookingId || ''); })[0];
+      if (!b || b['顧客ID'] !== c.id) fail_('予約が見つかりません。画面を再読み込みしてください。');
+      if (b['状態'] === STATUS.PENDING) fail_('この予約はまだ承認前です。画面を再読み込みして「取り消す」から取り消してください。');
+      if (b['状態'] !== STATUS.CONFIRMED) fail_('この予約はすでに「' + b['状態'] + '」になっています。');
+      const s = new Date(b['開始']), e = new Date(b['終了']);
+      if (e.getTime() < Date.now()) fail_('終わったセッションは申請できません。');
+      const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'] };
+      const label = { date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name };
+      if (b['キャンセル申請']) return label; // 二重に押しても通知は1回
+      note = String(note || '').trim().slice(0, 200);
+      updateCells_(SH.BOOKINGS, b._row, { 'キャンセル申請': isoJst_(new Date()) + (note ? '｜' + note : '') });
+      // ジムの取り消しがすぐできるよう、カレンダーの説明欄に書いたジムの予約先（【ジム：…】の行）も添える
+      let gymNote = '';
+      try {
+        const ev = b['予定ID'] ? getCal_(getSettings_()).getEventById(b['予定ID']) : null;
+        const m = ev ? String(ev.getDescription() || '').match(/【ジム[^】]*】|【[^】]*予約[^】]*】/) : null;
+        if (m) gymNote = '\nジム：' + m[0];
+      } catch (err) { /* 何もしない */ }
+      const hours = Math.round((s.getTime() - Date.now()) / 3600000);
+      queueNotify_(':arrows_counterclockwise: *キャンセル・変更の申請*\n' + c.name + 'さん｜' + label.date + ' ' + label.time + '｜' + label.gym +
+        '（開始まで約' + (hours >= 48 ? Math.round(hours / 24) + '日' : hours + '時間') + '）' + (note ? '\nひとこと：' + note : '') + gymNote +
+        '\n管理画面の「確定予約」から、キャンセル（回数を戻す／消化）か日時・場所の変更を選んでください → ' + adminUrl_());
+      return label;
     });
   });
 }
@@ -544,7 +585,8 @@ function apiAdminView(adminToken) {
         day: dayKey_(s), hm: fmtTime_(s),
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), status: b['状態'],
         requestedAt: b['申請日時'] ? fmtDay_(new Date(b['申請日時'])) + ' ' + fmtTime_(new Date(b['申請日時'])) : '',
-        remaining: remainingOf(b['顧客ID']), past: e < now
+        remaining: remainingOf(b['顧客ID']), past: e < now,
+        cancelRequest: b['キャンセル申請'] || ''
       };
     };
 
@@ -790,9 +832,9 @@ function apiCancel(adminToken, bookingId, refund) {
       const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'], address: '' };
       const sent = sendCustomer_(c, fill_(st.tplCancel, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name, address: gym.address,
-        refund: refund ? '回数券は消化せず、1回分お戻ししています。' : '規定により、1回分は消化扱いとなります。',
+        refund: refund ? '回数券は消化せず、1回分お戻ししています。' : '今回は1回分を消化扱いとさせていただきます。',
         remaining: rem
-      }));
+      }) + (refund && c.token ? '\n\n振替のご予約は、こちらのページからお選びください。\n' + customerUrl_(c.token) : ''));
       return 'キャンセルしました（残回数 ' + rem + '回）。' + rentalNote + sentNote_(sent);
     });
   });
@@ -881,7 +923,7 @@ function apiReschedule(adminToken, bookingId, change) {
       ev.setTime(s, e);
       if (gymChanged) { ev.setLocation(gym.name + '　' + (gym.address || '')); setGymTag_(st, ev, gym.id); }
       ev.setDescription(String(ev.getDescription() || '') + '\n変更（' + fmtDay_(new Date()) + '）：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '｜' + gym0.name + ' → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '｜' + gym.name);
-      updateCells_(SH.BOOKINGS, b._row, { '開始': isoJst_(s), '終了': isoJst_(e), 'ジムID': gym.id, 'ジム予定ID': newRental, '処理日時': isoJst_(new Date()) });
+      updateCells_(SH.BOOKINGS, b._row, { '開始': isoJst_(s), '終了': isoJst_(e), 'ジムID': gym.id, 'ジム予定ID': newRental, '処理日時': isoJst_(new Date()), 'キャンセル申請': '' });
       patchSlotsCache_(s, e);
 
       let sentNote = 'お客さんには連絡していません。';
