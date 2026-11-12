@@ -251,10 +251,12 @@
   .date.empty .dw { color:#B3BDB9; }
   .date.empty .n { background:transparent; color:#B3BDB9; }
   .date .n { line-height:1.6; }
-.bkt td:last-child { text-align:right; }
-  .bk-x { display:block; margin:6px 0 0 auto; min-height:32px; padding:4px 10px; border:1px solid #D9C9A3; border-radius:8px; background:#fff; color:#806025; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer; }
+.bkt tr.bk-act td { padding-top:0; text-align:right; border-top:none; }
+  .bkt tr:has(+ tr.bk-act) td { border-bottom:none; padding-bottom:4px; }
+  .bk-x { display:inline-block; margin:0 0 0 auto; min-height:32px; padding:4px 10px; border:1px solid #D9C9A3; border-radius:8px; background:#fff; color:#806025; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer; }
   .bk-x.sure { background:#B4532A; border-color:#B4532A; color:#fff; }
   .bk-x:disabled { opacity:.6; cursor:default; }
+  .bk-rq { color:#806025; font-size:11px; font-weight:700; }
   .bk-err { margin-top:4px; color:#B4532A; font-size:11px; text-align:right; }
 </style>
 </head>
@@ -368,8 +370,12 @@
       v.bookings.forEach((b) => {
         const done = b.status === '済', ok = b.status === '確定';
         h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + ' <span class="t">' + esc(String(b.time).split('〜')[0]) + '〜</span></td><td class="g">' + esc(b.gym) + '</td>' +
-          '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : '承認待ち') + '</span>' +
-          (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') + '</td></tr>';
+          '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : '承認待ち') + '</span></td></tr>';
+        // 取り消し・申請のボタンは、日付やジム名を狭くしないよう下の行に出す
+        const act = (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') +
+          (ok && b.id && !b.requested ? '<button type="button" class="bk-x" data-rq="' + esc(b.id) + '">キャンセル・変更</button>' : '') +
+          (ok && b.requested ? '<span class="bk-rq">キャンセル・変更を申請済み（連絡をお待ちください）</span>' : '');
+        if (act) h += '<tr class="bk-act"><td colspan="3">' + act + '</td></tr>';
       });
       h += '</tbody></table>';
     }
@@ -388,7 +394,7 @@
       h += '<div id="slots"></div>';
     }
     h += '<div class="trainer"><img src="trainer.jpg" alt="トレーナー さんぽん" width="64" height="64" loading="lazy">' +
-      '<div class="t-msg">ご予約ありがとうございます！当日お会いできるのを楽しみにしています。承認待ちの仮予約は上の「取り消す」から取り消せます。確定後のキャンセル・日時の変更は、Slackで気軽にご連絡ください。<br>さんぽん</div></div>';
+      '<div class="t-msg">ご予約ありがとうございます！当日お会いできるのを楽しみにしています。承認待ちの仮予約は上の「取り消す」から取り消せます。確定後のキャンセル・日時の変更は「キャンセル・変更」から申請するか、Slackで気軽にご連絡ください。<br>さんぽん</div></div>';
     $('app').innerHTML = h;
 
     // 承認前の仮予約の取り消し（1回目で確認表示、2回目で実行。押し間違い防止）
@@ -409,6 +415,28 @@
         if (box) box.insertAdjacentHTML('afterbegin', '<div class="note" style="margin-bottom:12px">' + esc(r.date + ' ' + r.time + '（' + r.gym + '）') + 'の仮予約を取り消しました。</div>');
       } catch (e) {
         el.disabled = false; el.classList.remove('sure'); el.textContent = '取り消す';
+        el.closest('td').insertAdjacentHTML('beforeend', '<div class="bk-err">' + esc(e) + '</div>');
+      }
+    }));
+
+    // 確定後のキャンセル・変更の申請（さんぽんが確認して連絡する）
+    document.querySelectorAll('[data-rq]').forEach((el) => el.addEventListener('click', async () => {
+      if (el.disabled) return;
+      if (!el.classList.contains('sure')) {
+        document.querySelectorAll('[data-rq].sure,[data-cx].sure').forEach((x) => { x.classList.remove('sure'); x.textContent = x.hasAttribute('data-rq') ? 'キャンセル・変更' : '取り消す'; });
+        el.classList.add('sure'); el.textContent = 'さんぽんに申請する';
+        return;
+      }
+      el.disabled = true; el.textContent = '送信中…';
+      try {
+        const r = await call('apiRequestCancel', TOKEN, el.getAttribute('data-rq'), '');
+        el.outerHTML = '<span class="bk-rq">キャンセル・変更を申請済み（連絡をお待ちください）</span>';
+        try { localStorage.removeItem(CKEY); } catch (e) {}
+        const box = $('app');
+        if (box) box.insertAdjacentHTML('afterbegin', '<div class="note" style="margin-bottom:12px">' + esc(r.date + ' ' + r.time + '（' + r.gym + '）') +
+          'のキャンセル・変更をさんぽんに申請しました。内容を確認して、Slackでご連絡します。日時の希望などがあれば、Slackで一言送ってください。</div>');
+      } catch (e) {
+        el.disabled = false; el.classList.remove('sure'); el.textContent = 'キャンセル・変更';
         el.closest('td').insertAdjacentHTML('beforeend', '<div class="bk-err">' + esc(e) + '</div>');
       }
     }));

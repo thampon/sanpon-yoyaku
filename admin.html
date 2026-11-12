@@ -35,6 +35,7 @@
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
   .btn:disabled { opacity: .5; cursor: default; }
   .warn { background: #fdf0eb; border: 1px solid #f1c9b8; color: #7d3417; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+  .reqtag { margin: 0 0 -6px; padding: 8px 12px 12px; border-radius: 10px 10px 0 0; background: #fbf1d6; color: #6b4e12; font-size: 12px; font-weight: 700; }
   .warn ul { margin: 4px 0 0; padding-left: 18px; }
   .empty { color: var(--sub); text-align: center; padding: 32px 0; }
   .num { font-size: 22px; font-weight: 700; color: var(--green); line-height: 1; }
@@ -200,6 +201,8 @@
     $('warnings').innerHTML = data.warnings.length
       ? '<div class="warn"><b>カレンダーとのズレ・要対応</b><ul><li>' + data.warnings.map(esc).join('</li><li>') + '</li></ul></div>' : '';
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
+    const rq = data.upcoming.filter((b) => b.cancelRequest).length, ut = document.querySelector('.tab[data-tab="upcoming"]');
+    if (ut) ut.innerHTML = '確定予約' + (rq ? ' <span class="badge">' + rq + '</span>' : '');
     if (tab === 'pending') renderPending();
     else if (tab === 'upcoming') renderUpcoming();
     else renderCustomers();
@@ -238,9 +241,17 @@
 
   function renderUpcoming() {
     if (!data.upcoming.length) { $('content').innerHTML = '<div class="empty">確定済みの予約はありません。</div>'; return; }
-    $('content').innerHTML = data.upcoming.map((b) => bookingCard(b,
+    const reqs = data.upcoming.filter((b) => b.cancelRequest).length;
+    $('content').innerHTML = (reqs ? '<div class="warn"><b>キャンセル・変更の申請が ' + reqs + '件あります</b>（下の黄色の予約）。キャンセル（回数を戻す／消化）か、日時・場所の変更を選んでください。</div>' : '') +
+      data.upcoming.slice().sort((a, b) => (b.cancelRequest ? 1 : 0) - (a.cancelRequest ? 1 : 0)).map((b) => (b.cancelRequest ? reqBanner(b) : '') + bookingCard(b,
       (data.gyms && b.day ? '<button class="btn sub" data-act="move" data-id="' + esc(b.id) + '">日時・場所を変更</button>' : '') +
       '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセルする</button>')).join('');
+  }
+  function reqBanner(b) {
+    const parts = String(b.cancelRequest).split('｜');
+    const at = parts[0] ? new Date(parts[0]) : null;
+    const when = at && !isNaN(at) ? (at.getMonth() + 1) + '/' + at.getDate() + ' ' + at.getHours() + ':' + String(at.getMinutes()).padStart(2, '0') : '';
+    return '<div class="reqtag">🔁 お客さんからキャンセル・変更の申請' + (when ? '（' + esc(when) + '）' : '') + (parts[1] ? '：' + esc(parts.slice(1).join('｜')) : '') + '</div>';
   }
 
   function renderCustomers() {
