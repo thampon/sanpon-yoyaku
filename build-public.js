@@ -2,7 +2,7 @@
 /**
  * Apps Script用の画面ファイルを、GitHub Pages（公開）用に変換する。
  *   src/Booking.html → index.html（お客さん用）
- *   gas/Admin.html   → admin.html（管理画面）
+ *   ※admin.html（管理画面）は直接編集する。gas/Admin.html からは変換しない（古い版で上書きされる事故の防止）
  *
  * 使い方：node build-public.js
  * 確認だけ：node build-public.js --check（今の index.html / admin.html と一致するかを見る。ファイルは書き換えない）
@@ -60,18 +60,9 @@ const TARGETS = [
       "<script>if (new URLSearchParams(location.search).get('admin')) location.replace('admin.html' + location.search);</script>"
     ],
     token: ['  const TOKEN = <?!= JSON.stringify(token) ?>;', "  const TOKEN = new URLSearchParams(location.search).get('t') || '';"]
-  },
-  {
-    src: 'gas/Admin.html', out: 'admin.html',
-    head: [
-      '<meta name="viewport" content="width=device-width, initial-scale=1">',
-      '<meta name="robots" content="noindex">',
-      '<title>予約管理｜さんぽんパーソナル</title>',
-      '<link rel="icon" href="admin-icon.svg" type="image/svg+xml">',
-      '<link rel="apple-touch-icon" href="admin-apple-touch-icon.png">'
-    ],
-    token: ['  const ADMIN = <?!= JSON.stringify(adminToken) ?>;', "  const ADMIN = new URLSearchParams(location.search).get('admin') || '';"]
   }
+  // ※管理画面（admin.html）は 2026-11 以降、admin.html を直接編集している（gas/Admin.html は古い版のまま）。
+  //   ここで変換すると新しい admin.html が古い版で上書きされるため、変換対象から外した。
 ];
 
 function replaceOnce(text, from, to, label) {
