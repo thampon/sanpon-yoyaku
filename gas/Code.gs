@@ -30,7 +30,7 @@ const HEADERS = {
   'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン'],
   '移動時間': ['出発ジムID', '到着ジムID', '所要分'],
   '営業時間': ['曜日', '開始', '終了', '休み'],
-  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元'],
+  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元', '連絡'],
   '回数券履歴': ['日時', '顧客ID', '氏名', '増減', '理由', '予約ID'],
   '設定': ['キー', '値', '説明']
 };
@@ -821,12 +821,12 @@ function apiApprove(adminToken, bookingId, change) {
       if (chgOf) {
         const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
         const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
-        const sentC = quiet ? null : sendCustomer_(c, c.name + 'さん\nご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
+        const sentC = quiet ? null : sendTracked_(c, [b['予約ID']], c.name + 'さん\nご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
           '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + gym.name + (gym.address ? '\n住所：' + gym.address : '') + '\n残り回数：' + rem + '回\n\n当日お待ちしています！');
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
           (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC));
       }
-      const sent = quiet ? null : sendCustomer_(c, fill_(st.tplApprove, {
+      const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: gym.name, address: gym.address, remaining: rem
       }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : ''));
@@ -859,11 +859,12 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
     order.forEach(function (cid) {
       const c = requireCustomerById_(cid);
       const text = batchApproveText_(c, groups[cid].sort(byStart_), gyms);
-      const r = sendCustomer_(c, text);
-      if (r.ok) sentNames.push(c.name); else failed.push({ name: c.name, error: r.error });
+      const r = sendTracked_(c, groups[cid].map(function (b) { return b['予約ID']; }), text);
+      if (r.ok) sentNames.push(c.name); else failed.push({ name: c.name, error: r.error, queued: !!r.queued });
     });
     const msg = (sentNames.length ? sentNames.join('、') + 'さんに確定連絡をまとめて送りました。' : '') +
-      (failed.length ? '※' + failed.map(function (f) { return f.name + 'さん（' + f.error + '）'; }).join('、') + 'へのSlack連絡は失敗しました。手動で連絡してください。' : '');
+      (failed.length ? '※' + failed.map(function (f) { return f.name + 'さん（' + f.error + '）'; }).join('、') + 'へのSlack連絡は失敗しました。' +
+        (failed.every(function (f) { return f.queued; }) ? '1分ごとに自動で再送し、' + RETRY_MAX_ + '回再送しても届かなければSlackでお知らせします。' : '手動で連絡してください。') : '');
     return { sent: sentNames, failed: failed, confirmedIds: confirmedIds, text: msg || '連絡する予約がありませんでした。' };
   });
 }
@@ -904,12 +905,12 @@ function apiReject(adminToken, bookingId, reason) {
       if (b['変更元']) {
         const ob = readRows_(SH.BOOKINGS).filter(function (x) { return x['予約ID'] === b['変更元']; })[0];
         const os = ob ? new Date(ob['開始']) : null;
-        const sentC = sendCustomer_(c, c.name + 'さん\nご希望の変更先 ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜（' + gym.name + '）は、ジムの空きが確保できずお受けできませんでした。' +
+        const sentC = sendTracked_(c, [b['予約ID']], c.name + 'さん\nご希望の変更先 ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜（' + gym.name + '）は、ジムの空きが確保できずお受けできませんでした。' +
           (reason ? '（' + reason + '）' : '') + '\n' + (os ? '元のご予約 ' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 はそのままです。' : '') +
           '\n別の日時に変更する場合は、もう一度予約ページからお選びください。\n' + customerUrl_(c.token));
         return '変更の申請を却下しました（元の予約はそのまま）。' + sentNote_(sentC);
       }
-      const sent = sendCustomer_(c, fill_(st.tplReject, {
+      const sent = sendTracked_(c, [b['予約ID']], fill_(st.tplReject, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name,
         address: gym.address, reason: reason ? '（' + reason + '）' : '', url: customerUrl_(c.token), remaining: c.remaining
       }));
@@ -947,7 +948,7 @@ function apiCancel(adminToken, bookingId, refund) {
 
       const s = new Date(b['開始']), e = new Date(b['終了']);
       const gym = gymById_(getGyms_(), b['ジムID']) || { name: b['ジムID'], address: '' };
-      const sent = sendCustomer_(c, fill_(st.tplCancel, {
+      const sent = sendTracked_(c, [b['予約ID']], fill_(st.tplCancel, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: gym.name, address: gym.address,
         refund: refund ? '回数券は消化せず、1回分お戻ししています。' : '今回は1回分を消化扱いとさせていただきます。',
         remaining: rem
@@ -1045,7 +1046,7 @@ function apiReschedule(adminToken, bookingId, change) {
 
       let sentNote = 'お客さんには連絡していません。';
       if (change.notify !== false) {
-        const sent = sendCustomer_(c, c.name + 'さん\nご予約の日時・場所を変更しました。\n\n変更前：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' + fmtTime_(e0) + '｜' + gym0.name +
+        const sent = sendTracked_(c, [b['予約ID']], c.name + 'さん\nご予約の日時・場所を変更しました。\n\n変更前：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' + fmtTime_(e0) + '｜' + gym0.name +
           '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + gym.name + (gym.address ? '\n住所：' + gym.address : '') + '\n\n当日お待ちしています！');
         sentNote = sentNote_(sent);
       }
@@ -1499,6 +1500,77 @@ function appendRow_(name, obj) {
 /** お客さんへの連絡の末尾に付ける名乗り（経理部・カスタマーサクセス部と共通の「運営AI」） */
 const SIGNATURE_ = '\n\n━━━━━━━━━━━━\n:robot_face: *運営AI*\n━━━━━━━━━━━━';
 /** 顧客の既存DMチャンネルに、さんぽん本人として投稿（ユーザートークン） */
+/**
+ * お客さんへの連絡（予約に結びつくもの）。結果を予約シートの「連絡」列に残し、
+ * 失敗したら1分ごとのトリガーで最大3回まで自動で再送する。3回とも失敗したらトレーナーにSlackで知らせる。
+ */
+const RETRY_MAX_ = 3;
+function sendTracked_(c, ids, text) {
+  const r = sendCustomer_(c, text);
+  const now = isoJst_(new Date());
+  if (r.ok) { markContact_(ids, '済 ' + now); return r; }
+  // 設定の不足（チャンネルID・トークン未設定）は再送しても直らないので、すぐ知らせる
+  if (/未設定/.test(r.error)) {
+    markContact_(ids, '失敗（要手動連絡）：' + r.error);
+    notifyTrainer_(':warning: *お客さんへの連絡が届いていません*\n' + c.name + 'さん：' + r.error + '\n手動で連絡してください。\n\n送る予定だった内容：\n' + text);
+    return r;
+  }
+  markContact_(ids, '失敗（再送待ち 1/' + RETRY_MAX_ + '）：' + r.error);
+  try {
+    withRetryQueue_(function (q) { q.push({ cid: c.id, ids: ids, text: text, tries: 1, err: r.error }); return q; });
+    r.queued = true;
+  } catch (e) {
+    notifyTrainer_(':warning: *お客さんへの連絡が届いていません*\n' + c.name + 'さん：' + r.error + '\n手動で連絡してください。\n\n送る予定だった内容：\n' + text);
+  }
+  return r;
+}
+/** 予約シートの「連絡」列に結果を書く（書けなくても本処理は止めない） */
+function markContact_(ids, val) {
+  try {
+    if (!ids || !ids.length) return;
+    const prev = FRESH_READS_;
+    ROWS_MEMO_ = {}; FRESH_READS_ = true;
+    let rows;
+    try { rows = readRows_(SH.BOOKINGS); } finally { FRESH_READS_ = prev; }
+    rows.forEach(function (b) { if (ids.indexOf(b['予約ID']) >= 0) updateCells_(SH.BOOKINGS, b._row, { '連絡': val }); });
+  } catch (e) { Logger.log('連絡列の更新に失敗: ' + e); }
+}
+/** 再送待ちの列（スクリプトプロパティ CUSTOMER_RETRY）を読み書きする */
+function withRetryQueue_(fn) {
+  const lock = LockService.getScriptLock();
+  const held = LOCK_HELD_;
+  if (!held && !lock.tryLock(30000)) throw new Error('lock');
+  try {
+    const p = PropertiesService.getScriptProperties();
+    const q = fn(JSON.parse(p.getProperty('CUSTOMER_RETRY') || '[]'));
+    if (q.length) p.setProperty('CUSTOMER_RETRY', JSON.stringify(q)); else p.deleteProperty('CUSTOMER_RETRY');
+  } finally { if (!held) lock.releaseLock(); }
+}
+/** 再送待ちを1回分処理する（flushNotifyQueue から毎分呼ぶ） */
+function retryCustomerSends_() {
+  let items = [];
+  try { withRetryQueue_(function (q) { items = q; return []; }); } catch (e) { return; }
+  if (!items.length) return;
+  const keep = [];
+  items.forEach(function (it) {
+    let c = null;
+    try { c = requireCustomerById_(it.cid); } catch (e) { c = null; }
+    const r = c ? sendCustomer_(c, it.text) : { ok: false, error: 'お客さんが見つかりません（' + it.cid + '）' };
+    if (r.ok) { markContact_(it.ids, '済（再送' + it.tries + '回目で送信） ' + isoJst_(new Date())); return; }
+    const tries = it.tries + 1;
+    if (tries > RETRY_MAX_ || !c) {
+      markContact_(it.ids, '失敗（要手動連絡）：' + r.error);
+      notifyTrainer_(':warning: *お客さんへの連絡が届いていません*\n' + (c ? c.name : it.cid) + 'さんへの連絡が、自動の再送（' + RETRY_MAX_ + '回）でも届きませんでした（' + r.error + '）。手動で連絡してください。\n\n送る予定だった内容：\n' + it.text);
+      return;
+    }
+    markContact_(it.ids, '失敗（再送待ち ' + tries + '/' + RETRY_MAX_ + '）：' + r.error);
+    keep.push({ cid: it.cid, ids: it.ids, text: it.text, tries: tries, err: r.error });
+  });
+  if (keep.length) {
+    try { withRetryQueue_(function (q) { return keep.concat(q); }); }
+    catch (e) { keep.forEach(function (it) { notifyTrainer_(':warning: 再送待ちを保存できませんでした。' + it.cid + ' へ手動で連絡してください。\n' + it.text); }); }
+  }
+}
 function sendCustomer_(c, text) {
   const tok = PropertiesService.getScriptProperties().getProperty('SLACK_USER_TOKEN');
   if (!tok) return { ok: false, error: 'SLACK_USER_TOKEN 未設定' };
@@ -1529,6 +1601,10 @@ function queueNotify_(text) {
   } catch (e) { notifyTrainer_(text); }
 }
 function flushNotifyQueue() {
+  try { retryCustomerSends_(); } catch (e) { Logger.log('再送処理に失敗: ' + e); }
+  flushTrainerQueue_();
+}
+function flushTrainerQueue_() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return;
   let q;
@@ -1585,7 +1661,9 @@ function notifyTrainer_(text) {
 }
 
 function sentNote_(sent) {
-  return sent.ok ? 'お客さんにSlackで連絡しました。' : '※お客さんへのSlack連絡は失敗しました（' + sent.error + '）。手動で連絡してください。';
+  if (sent.ok) return 'お客さんにSlackで連絡しました。';
+  return '※お客さんへのSlack連絡は失敗しました（' + sent.error + '）。' +
+    (sent.queued ? '1分ごとに自動で再送し、' + RETRY_MAX_ + '回再送しても届かなければSlackでお知らせします。' : '手動で連絡してください。');
 }
 
 // ===== 共通ユーティリティ =====
@@ -1607,9 +1685,11 @@ function withLock_(fn) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) fail_('混み合っています。少し待ってからもう一度お試しください。');
   // 書き込みを伴う処理は、ためた読み込み結果を使わず最新のシートで判断する
-  ROWS_MEMO_ = {}; FRESH_READS_ = true;
-  try { return fn(); } finally { FRESH_READS_ = false; lock.releaseLock(); }
+  ROWS_MEMO_ = {}; FRESH_READS_ = true; LOCK_HELD_ = true;
+  try { return fn(); } finally { FRESH_READS_ = false; LOCK_HELD_ = false; lock.releaseLock(); }
 }
+/** withLock_ の中にいるか（同じ実行の中でロックを二重に取って、外側のロックを先に外してしまわないように） */
+let LOCK_HELD_ = false;
 
 function adminUrl_() {
   const t = PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN');

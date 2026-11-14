@@ -310,13 +310,20 @@
       : '<div class="empty">「顧客」シートに顧客を登録してください。</div>';
   }
 
+  // お客さんへのSlack連絡が失敗したときは、6秒で消える通知ではなく、閉じるまで残る警告で出す
+  const isSendFail = (m) => typeof m === 'string' && m.indexOf('Slack連絡は失敗') >= 0;
+  function showResult(msg) {
+    if (isSendFail(msg)) ask({ title: '⚠ お客さんへの連絡が届いていません', body: esc(msg), buttons: [] });
+    else toast(msg, 6000);
+  }
+
   async function run(fn, ...args) {
     if (working) return;
     working = true;
     document.querySelectorAll('[data-act],[data-pick]').forEach((b) => (b.disabled = true));
     try {
       const msg = await call(fn, ADMIN, ...args);
-      toast(msg, 6000);
+      showResult(msg);
       await load();
     } catch (e) {
       toast('⚠ ' + e, 7000);
@@ -376,7 +383,7 @@
         return;
       }
       if (err) { toast('⚠ ' + err, 7000); return; }
-      toast(msg, 6000);
+      showResult(msg);
       load();
     } else if (act === 'reject') {
       const b = find(data.pending, id);
@@ -475,7 +482,7 @@
     working = false;
     toast(ng.length ? '⚠ ' + ok.length + '件承認、' + ng.length + '件は承認できませんでした' : list.length + '件を承認しました', 6000);
     if (notifyNote) {
-      await ask({ title: 'Slack連絡を確認してください', body: esc(notifyNote), buttons: [] });
+      await ask({ title: '⚠ お客さんへの連絡が届いていません', body: esc(notifyNote), buttons: [] });
     }
     if (ng.length) {
       ask({ title: ok.length + '件承認／' + ng.length + '件は未承認',
