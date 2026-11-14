@@ -224,7 +224,7 @@
   }
 
   // ジムを探すページへのリンク（GlitteRは不要なので出さない）
-  // 六本木＝TreTre SPACE の mela gym 予約ページ（日付とクーポンを入れた状態）＋ジムカリ。
+  // 六本木＝TreTre SPACE の mela gym 予約ページ（日付とクーポンを入れた状態）＋ジムカリ。登戸＝Gym's（STREAM登戸向ヶ丘遊園店の会員アプリ）＋ジムカリ。
   // それ以外＝ジムカリの地名検索（/search?area_word=地名。駅名レベルで絞れる）
   const TRETRE_MELA_ROPPONGI = 'https://space.tre-tre.com/facilities/2a251a97-963c-495b-9ef6-f5e86fd7071d/book';
   const GYMKARI_WORDS = {
@@ -249,6 +249,7 @@
     const when = st && en ? 'started_at=' + b.day + 'T' + st + '&ended_at=' + b.day + 'T' + en : '';
     let html = '';
     if (b.gymId === 'roppongi') html += a(TRETRE_MELA_ROPPONGI + '?date=' + b.day + '&coupon=MELAMELA', '🔎 TreTre（mela六本木）');
+    if (b.gymId === 'area_noborito') html += a('https://cl.gyms.jp/', '🔎 Gym\'s（STREAM登戸）');
     const words = GYMKARI_WORDS[b.gymId];
     html += words ? words.map((w) => a('https://gymkari.jp/search?area_word=' + encodeURIComponent(w) + (when ? '&' + when : ''), '🔎 ジムカリ：' + w)).join('')
       : a('https://gymkari.jp/rentalgym' + (when ? '?' + when : ''), '🔎 ジムカリで探す');
