@@ -854,7 +854,8 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
       if (!groups[b['顧客ID']]) { groups[b['顧客ID']] = []; order.push(b['顧客ID']); }
       groups[b['顧客ID']].push(b);
     });
-    const sentNames = [], failed = [];
+    const sentNames = [], failed = [], confirmedIds = [];
+    order.forEach(function (cid) { groups[cid].forEach(function (b) { confirmedIds.push(b['予約ID']); }); });
     order.forEach(function (cid) {
       const c = requireCustomerById_(cid);
       const text = batchApproveText_(c, groups[cid].sort(byStart_), gyms);
@@ -863,7 +864,7 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
     });
     const msg = (sentNames.length ? sentNames.join('、') + 'さんに確定連絡をまとめて送りました。' : '') +
       (failed.length ? '※' + failed.map(function (f) { return f.name + 'さん（' + f.error + '）'; }).join('、') + 'へのSlack連絡は失敗しました。手動で連絡してください。' : '');
-    return { sent: sentNames, failed: failed, text: msg || '連絡する予約がありませんでした。' };
+    return { sent: sentNames, failed: failed, confirmedIds: confirmedIds, text: msg || '連絡する予約がありませんでした。' };
   });
 }
 

@@ -416,12 +416,20 @@
       catch (e) { ng.push({ b, e: String(e) }); }
     }
     const quietOk = ok.filter(grouped);
+    // 承認の返事がエラーでも、サーバー側では確定済みのことがある（通信切れなど）。
+    // まとめ連絡には「エラーになった分」も渡し、サーバーが実際に確定しているものだけを連絡に含める。
+    const quietNg = ng.map((x) => x.b).filter(grouped);
     let notifyNote = '';
-    if (quietOk.length) {
+    if (quietOk.length || quietNg.length) {
       toast('確定連絡を送信中…', 60000);
       try {
-        const res = await call('apiNotifyApprovedBatch', ADMIN, quietOk.map((b) => b.id));
+        const res = await call('apiNotifyApprovedBatch', ADMIN, quietOk.concat(quietNg).map((b) => b.id));
         if (res && res.failed && res.failed.length) notifyNote = res.text;
+        // 実は確定していた分は「承認できた」側に移す
+        const done = (res && Array.isArray(res.confirmedIds)) ? res.confirmedIds : [];
+        for (let i = ng.length - 1; i >= 0; i--) {
+          if (done.indexOf(ng[i].b.id) >= 0) { ok.push(ng[i].b); sel.delete(ng[i].b.id); ng.splice(i, 1); }
+        }
       } catch (e) {
         notifyNote = '※まとめての確定連絡を送れませんでした（' + String(e) + '）。次のお客さんには手動で連絡してください：' +
           [...new Set(quietOk.map((b) => b.name))].join('、');
