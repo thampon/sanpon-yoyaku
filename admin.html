@@ -239,13 +239,19 @@
     area_aoyama_shibuya: ['青山一丁目', '渋谷'],
     shibuya: ['渋谷']
   };
+  function hm2(t) { const m = String(t || '').match(/(\d{1,2}):(\d{2})/); return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : ''; }
   function gymLinks(b) {
     if (!b.day || !b.gymId || b.gymId === 'glitter') return '';
     const a = (href, label) => '<a class="btn gym" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+    // 利用日時で絞り込む（ジムカリの「利用日時」と同じ。受付前の日付や満室だと0件になる）
+    const parts = String(b.time || '').split('〜');
+    const st = hm2(parts[0]), en = hm2(parts[1]);
+    const when = st && en ? 'started_at=' + b.day + 'T' + st + '&ended_at=' + b.day + 'T' + en : '';
     let html = '';
     if (b.gymId === 'roppongi') html += a(TRETRE_MELA_ROPPONGI + '?date=' + b.day + '&coupon=MELAMELA', '🔎 TreTre（mela六本木）');
     const words = GYMKARI_WORDS[b.gymId];
-    html += words ? words.map((w) => a('https://gymkari.jp/search?area_word=' + encodeURIComponent(w), '🔎 ジムカリ：' + w)).join('') : a('https://gymkari.jp/rentalgym', '🔎 ジムカリで探す');
+    html += words ? words.map((w) => a('https://gymkari.jp/search?area_word=' + encodeURIComponent(w) + (when ? '&' + when : ''), '🔎 ジムカリ：' + w)).join('')
+      : a('https://gymkari.jp/rentalgym' + (when ? '?' + when : ''), '🔎 ジムカリで探す');
     return '<div class="gymrow">' + html + '</div>';
   }
 
