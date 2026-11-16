@@ -826,6 +826,9 @@ function apiApprove(adminToken, bookingId, change) {
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
           (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC));
       }
+      // まとめ承認（1件ずつの連絡を止めた承認）は、管理画面が最後にまとめ連絡を頼む。
+      // 画面を閉じるなどで頼まれなかったときに備え、サーバー側にも「まとめ連絡待ち」を残す（5分たっても頼まれなければ自動で送る）
+      if (quiet) addBatchPending_(c.id, b['予約ID']);
       const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: gym.name, address: gym.address, remaining: rem
@@ -845,6 +848,7 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
     requireAdmin_(adminToken);
     const ids = (Array.isArray(bookingIds) ? bookingIds : []).map(String);
     if (!ids.length) fail_('予約が選ばれていません。');
+    removeBatchPending_(ids);
     ROWS_MEMO_ = {}; FRESH_READS_ = true; // 承認直後の最新のシートで判断する
     let rows, gyms;
     try { rows = readRows_(SH.BOOKINGS); gyms = getGyms_(); readRows_(SH.CUSTOMERS); } finally { FRESH_READS_ = false; }
@@ -1546,6 +1550,60 @@ function withRetryQueue_(fn) {
     if (q.length) p.setProperty('CUSTOMER_RETRY', JSON.stringify(q)); else p.deleteProperty('CUSTOMER_RETRY');
   } finally { if (!held) lock.releaseLock(); }
 }
+/** まとめ連絡待ち（スクリプトプロパティ BATCH_PENDING：[{cid, id, at}]） */
+const BATCH_WAIT_MS_ = 5 * 60 * 1000;
+function withBatchPending_(fn) {
+  const lock = LockService.getScriptLock();
+  const held = LOCK_HELD_;
+  if (!held && !lock.tryLock(30000)) throw new Error('lock');
+  try {
+    const p = PropertiesService.getScriptProperties();
+    const q = fn(JSON.parse(p.getProperty('BATCH_PENDING') || '[]'));
+    if (q.length) p.setProperty('BATCH_PENDING', JSON.stringify(q)); else p.deleteProperty('BATCH_PENDING');
+  } finally { if (!held) lock.releaseLock(); }
+}
+function addBatchPending_(cid, id) {
+  try { withBatchPending_(function (q) { q.push({ cid: cid, id: id, at: Date.now() }); return q; }); }
+  catch (e) { Logger.log('まとめ連絡待ちの登録に失敗: ' + e); }
+}
+function removeBatchPending_(ids) {
+  try { withBatchPending_(function (q) { return q.filter(function (x) { return ids.indexOf(x.id) < 0; }); }); }
+  catch (e) { Logger.log('まとめ連絡待ちの削除に失敗: ' + e); }
+}
+/** 5分たっても管理画面からまとめ連絡が頼まれなかった分を、お客さんごとに1通にまとめて送る（flushNotifyQueue から毎分） */
+function sendOrphanBatches_() {
+  let due = [];
+  const now = Date.now();
+  try {
+    withBatchPending_(function (q) {
+      // お客さんごとに、最後の承認から5分たったものだけ送る（まとめ承認の途中で送らないように）
+      const last = {};
+      q.forEach(function (x) { last[x.cid] = Math.max(last[x.cid] || 0, x.at); });
+      due = q.filter(function (x) { return now - last[x.cid] >= BATCH_WAIT_MS_; });
+      return q.filter(function (x) { return now - last[x.cid] < BATCH_WAIT_MS_; });
+    });
+  } catch (e) { return; }
+  if (!due.length) return;
+  const ids = due.map(function (x) { return x.id; });
+  ROWS_MEMO_ = {}; FRESH_READS_ = true;
+  let rows, gyms;
+  try { rows = readRows_(SH.BOOKINGS); gyms = getGyms_(); readRows_(SH.CUSTOMERS); } finally { FRESH_READS_ = false; }
+  const groups = {};
+  rows.forEach(function (b) {
+    // 連絡列に記録がある＝すでに連絡済み（手動で送った場合も含む）は送らない
+    if (ids.indexOf(b['予約ID']) < 0 || b['状態'] !== STATUS.CONFIRMED || String(b['連絡'] || '')) return;
+    (groups[b['顧客ID']] = groups[b['顧客ID']] || []).push(b);
+  });
+  Object.keys(groups).forEach(function (cid) {
+    try {
+      const c = requireCustomerById_(cid);
+      const list = groups[cid].sort(byStart_);
+      const r = sendTracked_(c, list.map(function (b) { return b['予約ID']; }), batchApproveText_(c, list, gyms));
+      notifyTrainer_((r.ok ? ':envelope: ' : ':warning: ') + c.name + 'さんのまとめ承認（' + list.length + '件）の確定連絡が管理画面から送られていなかったため、自動で' +
+        (r.ok ? '送りました。' : '送ろうとしましたが失敗しました（' + r.error + '）。自動で再送します。'));
+    } catch (e) { notifyTrainer_(':warning: まとめ承認の確定連絡を自動で送れませんでした（' + cid + '：' + e + '）。手動で連絡してください。'); }
+  });
+}
 /** 再送待ちを1回分処理する（flushNotifyQueue から毎分呼ぶ） */
 function retryCustomerSends_() {
   let items = [];
@@ -1602,6 +1660,7 @@ function queueNotify_(text) {
 }
 function flushNotifyQueue() {
   try { retryCustomerSends_(); } catch (e) { Logger.log('再送処理に失敗: ' + e); }
+  try { sendOrphanBatches_(); } catch (e) { Logger.log('まとめ連絡の自動送信に失敗: ' + e); }
   flushTrainerQueue_();
 }
 function flushTrainerQueue_() {
