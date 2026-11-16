@@ -309,11 +309,10 @@ function calendarBookings_(c, gyms, st, now) {
       const tag = (ep.shared && ep.shared.spGym) || (ep.private && ep.private.spGym) || ''; // 場所を変えた時の印（shared）を優先
       const gid = matchGym_(ev.location, gyms) || tag; // 場所欄を優先（日時・場所の変更後も確実に合う）
       const g = gid ? gymById_(gyms, gid) : null;
-      let place = g ? g.name : '';
-      if (!place) {
-        const m = String(ev.location || '').match(/（([^（）]+)）\s*$/);
-        place = m ? m[1] : (base.indexOf('@') >= 0 ? base.split('@').pop() : '');
-      }
+      // 表示名：場所欄の末尾の（ジム名）を優先（ジム予約メールから入る実際のジム名。例：BE LIKE たまプラーザ）。無ければ登録ジム名
+      const pm = String(ev.location || '').match(/（([^（）]+)）\s*$/);
+      let place = pm ? pm[1] : (g ? g.name : '');
+      if (!place) place = base.indexOf('@') >= 0 ? base.split('@').pop() : '';
       // 確定した予約は、住所と入室方法も渡す（入室方法は前日18時〜終了まで。それ以外は表示時刻だけ）
       const pi = (!pend && e >= now) ? placeInfo_(ev, g, s, e, now) : {};
       out.push({
@@ -343,7 +342,7 @@ function placeInfo_(ev, g, s, e, now) {
   else if (loc) address = loc.replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').replace(/（[^（）]*）\s*$/, '').replace(/^[^　]*　/, function (m) { return /\d/.test(m) ? m : ''; }).trim();
   let entry = '';
   String(ev.description || '').split(/\r?\n/).forEach(function (line) {
-    const m = line.match(/^入室[：:]\s*(.+)$/);
+    const m = line.match(/^(?:入室|鍵)[：:]\s*(.+)$/); // 手で入れた予定は「鍵：」の書き方もある
     if (m && !entry) entry = m[1].trim();
   });
   if (!entry && g && g.entry) entry = g.entry;
