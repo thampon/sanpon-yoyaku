@@ -27,7 +27,7 @@ const SH = {
 };
 const HEADERS = {
   '顧客': ['顧客ID', '氏名', 'カレンダー表記', '利用ジムID', 'SlackチャンネルID', 'トークン', '残回数', '有効', 'メモ', '予約期限', '優先ジム', 'セッション分'],
-  'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン'],
+  'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン', '入室方法'],
   '移動時間': ['出発ジムID', '到着ジムID', '所要分'],
   '営業時間': ['曜日', '開始', '終了', '休み'],
   '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元', '連絡'],
@@ -295,7 +295,7 @@ function calendarBookings_(c, gyms, st, now) {
   do {
     const res = Calendar.Events.list(getCal_(st).getId(), {
       timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 2500, pageToken: pageToken,
-      fields: 'nextPageToken,items(summary,start,end,location,status,extendedProperties)'
+      fields: 'nextPageToken,items(summary,start,end,location,description,status,extendedProperties)'
     });
     (res.items || []).forEach(function (ev) {
       if (ev.status === 'cancelled' || !ev.start || !ev.start.dateTime) return;
@@ -314,7 +314,10 @@ function calendarBookings_(c, gyms, st, now) {
         const m = String(ev.location || '').match(/（([^（）]+)）\s*$/);
         place = m ? m[1] : (base.indexOf('@') >= 0 ? base.split('@').pop() : '');
       }
+      // 確定した予約は、住所と入室方法も渡す（入室方法は前日18時〜終了まで。それ以外は表示時刻だけ）
+      const pi = (!pend && e >= now) ? placeInfo_(ev, g, s, e, now) : {};
       out.push({
+        address: pi.address || '', entry: pi.entry || '', entryFrom: pi.entryFrom || '',
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), gym: place || '—',
         status: pend ? STATUS.PENDING : (e < now ? '済' : STATUS.CONFIRMED),
         // 予約ID：承認前は「取り消す」、確定後は「キャンセル・変更を申請」に使う（手で入れた予定には無い）
@@ -325,6 +328,28 @@ function calendarBookings_(c, gyms, st, now) {
     pageToken = res.nextPageToken;
   } while (pageToken);
   return out;
+}
+
+/**
+ * 確定した予約の住所・入室方法（お客さんの予約ページ用）
+ * 住所：予定の「場所」欄（ジムの予約メールから自動で書き込まれたもの）。登録ジムに合えばジムシートの住所
+ * 入室方法：予定の説明欄の「入室：」の行（同じくメールから）。無ければジムシートの「入室方法」
+ * 料金・予約番号・予約サイトのURLは渡さない。入室方法は前日18時から終了までだけ渡す（2026-11-16 さんぽん決定）
+ */
+function placeInfo_(ev, g, s, e, now) {
+  const loc = String(ev.location || '').trim();
+  let address = '';
+  if (g && g.address && (!loc || loc.indexOf(g.name) === 0)) address = g.address;
+  else if (loc) address = loc.replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').replace(/（[^（）]*）\s*$/, '').replace(/^[^　]*　/, function (m) { return /\d/.test(m) ? m : ''; }).trim();
+  let entry = '';
+  String(ev.description || '').split(/\r?\n/).forEach(function (line) {
+    const m = line.match(/^入室[：:]\s*(.+)$/);
+    if (m && !entry) entry = m[1].trim();
+  });
+  if (!entry && g && g.entry) entry = g.entry;
+  const open = new Date(new Date(dayKey_(s) + 'T18:00:00+09:00').getTime() - 86400000); // 前日18時
+  const show = entry && now >= open && now <= e;
+  return { address: address, entry: show ? entry : '', entryFrom: entry && !show ? fmtDay_(open) + ' 18:00' : '' };
 }
 
 /**
@@ -1328,7 +1353,7 @@ function getCal_(st) {
 
 function getGyms_() {
   return readRows_(SH.GYMS).filter(function (r) { return r['ジムID']; }).map(function (r) {
-    return { id: r['ジムID'], name: r['名称'], address: r['住所'], keywords: splitList_(r['判定キーワード']), active: isTrue_(r['有効']), checkCal: r['空き確認カレンダーID'] || '', group: String(r['まとめボタン'] || '').trim() };
+    return { id: r['ジムID'], name: r['名称'], address: r['住所'], keywords: splitList_(r['判定キーワード']), active: isTrue_(r['有効']), checkCal: r['空き確認カレンダーID'] || '', group: String(r['まとめボタン'] || '').trim(), entry: String(r['入室方法'] || '').trim() };
   });
 }
 function gymById_(gyms, id) { return gyms.filter(function (g) { return g.id === id; })[0] || null; }

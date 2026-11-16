@@ -253,6 +253,12 @@
   .date .n { line-height:1.6; }
 .bkt tr.bk-act td { padding-top:0; text-align:right; border-top:none; }
   .bkt tr:has(+ tr.bk-act) td { border-bottom:none; padding-bottom:4px; }
+  .bkt .bk-place td { padding-top:0; text-align:left; }
+  .pl-row { display:flex; align-items:flex-start; gap:8px; margin:4px 0; font-size:12px; line-height:1.6; }
+  .pl-k { flex:none; padding:0 6px; border-radius:5px; background:#E9F2EE; color:#345D4D; font-size:11px; font-weight:700; line-height:1.8; }
+  .pl-v { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .pl-wait .pl-v { color:#6B7A80; }
+  .pl-map { flex:none; display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border:1px solid #9FB7AE; border-radius:8px; color:#24453A; font-size:12px; font-weight:700; text-decoration:none; background:#fff; }
   .bk-x { display:inline-block; margin:0 0 0 auto; min-height:32px; padding:4px 10px; border:1px solid #D9C9A3; border-radius:8px; background:#fff; color:#806025; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer; }
   .bk-x.sure { background:#B4532A; border-color:#B4532A; color:#fff; }
   .bk-x:disabled { opacity:.6; cursor:default; }
@@ -375,6 +381,15 @@
         const done = b.status === '済', ok = b.status === '確定';
         h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + ' <span class="t">' + esc(String(b.time).split('〜')[0]) + '〜</span></td><td class="g">' + esc(b.gym) + '</td>' +
           '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : b.changeFrom ? '変更先' : '承認待ち') + '</span></td></tr>';
+        // 確定した予約は、住所（地図ボタン）と入室方法を下の行に出す。入室方法は前日18時から表示
+        if (ok && (b.address || b.entry || b.entryFrom)) {
+          h += '<tr class="bk-place"><td colspan="3">' +
+            (b.address ? '<div class="pl-row"><span class="pl-k">住所</span><span class="pl-v">' + esc(b.address) + '</span>' +
+              '<a class="pl-map" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(b.address) + '" target="_blank" rel="noopener">地図</a></div>' : '') +
+            (b.entry ? '<div class="pl-row"><span class="pl-k">入室</span><span class="pl-v">' + esc(b.entry) + '</span></div>'
+              : b.entryFrom ? '<div class="pl-row pl-wait"><span class="pl-k">入室</span><span class="pl-v">' + esc(b.entryFrom) + 'から表示されます</span></div>' : '') +
+            '</td></tr>';
+        }
         // 取り消し・申請のボタンは、日付やジム名を狭くしないよう下の行に出す
         const act = (b.changeFrom ? '<span class="bk-rq">' + esc(b.changeFrom) + ' からの変更（承認待ち）</span> ' : '') +
           (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') +
