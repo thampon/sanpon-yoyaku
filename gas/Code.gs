@@ -899,8 +899,10 @@ function apiApprove(adminToken, bookingId, change) {
         const gm = findGymMail_(s);
         if (gm && gm.canceled) fail_('この日時のジム予約（' + gm.name + '）はキャンセルのメールが届いています。ジムを予約し直してから承認してください。');
         if (gm && gm.name && gm.address) {
-          place = { name: gm.name, address: gm.address };
-          ev.setLocation(gm.address + '（' + gm.name + '）');
+          // 予約サイトの宣伝文句のような名前（【駅すぐ】☆最安値☆など）は、お客さんには登録上の場所名で出す
+          const nm = (/[【☆！!]|駅徒歩|完全個室/.test(gm.name) || gm.name.length > 24) ? gym.name : gm.name;
+          place = { name: nm, address: gm.address };
+          ev.setLocation(gm.address + '（' + nm + '）');
           placeNote = '予約メールのジム（' + gm.name + '）の住所で連絡しました。';
         } else {
           placeNote = '※' + (gm && gm.error ? gm.error : 'この日時のジムの予約メールが見つからなかったため') + '、住所は書かずに連絡しました（前日のご案内・予約ページには、ジムの予約メールの反映後に出ます）。';
