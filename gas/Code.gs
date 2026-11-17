@@ -30,7 +30,7 @@ const HEADERS = {
   'ジム': ['ジムID', '名称', '住所', '判定キーワード', '有効', '空き確認カレンダーID', 'まとめボタン', '入室方法'],
   '移動時間': ['出発ジムID', '到着ジムID', '所要分'],
   '営業時間': ['曜日', '開始', '終了', '休み'],
-  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元', '連絡'],
+  '予約': ['予約ID', '顧客ID', '氏名', 'ジムID', '開始', '終了', '状態', '予定ID', '申請日時', '処理日時', '回数戻し', '却下理由', 'ジム予定ID', 'キャンセル申請', '変更元', '連絡', 'ジム名', 'ジム住所'],
   '回数券履歴': ['日時', '顧客ID', '氏名', '増減', '理由', '予約ID'],
   '設定': ['キー', '値', '説明']
 };
@@ -329,6 +329,75 @@ function calendarBookings_(c, gyms, st, now) {
   return out;
 }
 
+/** 場所が固定のジムか（GlitteRのように、空き確認カレンダーか入室方法が登録されているもの）。それ以外は毎回ちがうジムを借りる場所 */
+function isFixedGym_(g) { return !!(g && (g.checkCal || g.entry)); }
+
+/**
+ * ジムの予約メールから、その日時に実際に借りたジムの名前・住所を探す（2026-11-17 さんぽん指示「メールを確認して送る流れ」）
+ * 対象：ジムカリ／TreTre／Gym's（STREAM）／スペースマーケット（thampon0306からの転送を含む）
+ * 戻り値：{ name, address, site } または null（見つからない）／{ canceled: true }（あとからキャンセルのメールが来ている）／{ error }
+ */
+const KNOWN_GYM_ADDR_ = [ // メールに住所が書かれないサイト（TreTre・Gym's）用。ジムカリ・スペマはメールの住所を使う
+  [/mela.*六本木/, '東京都港区六本木3-5-14 かなりマンション302号室'],
+  [/mela.*(新富|銀座)/, '東京都中央区新富1-5-13 ブレシア銀座イースト1階'],
+  [/STREAM.*登戸/, '神奈川県川崎市多摩区登戸2519-1 ヨシザワ10 3F'],
+  [/Aivic.*新富/, '東京都中央区新富2-4-9 三新ビル4階'],
+  [/BE ?LIKE.*たまプラーザ/, '神奈川県横浜市青葉区美しが丘1-11-11 美しが丘マンション202']
+];
+function findGymMail_(s) {
+  const want = gymMailKey_(Utilities.formatDate(s, TZ, 'M'), Utilities.formatDate(s, TZ, 'd'), Utilities.formatDate(s, TZ, 'H'), Utilities.formatDate(s, TZ, 'mm'));
+  let threads;
+  try {
+    threads = GmailApp.search('(from:info@gymkari.jp OR from:noreply@send.space.tre-tre.com OR from:system@gyms.jp OR from:no-reply@spacemarket.com OR (from:thampon0306@gmail.com spacemarket)) newer_than:45d', 0, 100);
+  } catch (err) { return { error: 'メールを読めませんでした（' + err + '）' }; }
+  let best = null, canceledAt = 0;
+  threads.forEach(function (th) {
+    th.getMessages().forEach(function (m) {
+      let info = null;
+      try { info = parseGymMail_(m.getSubject(), m.getPlainBody()); } catch (err) { info = null; }
+      if (!info || info.key !== want) return;
+      const at = m.getDate().getTime();
+      if (info.cancel) { canceledAt = Math.max(canceledAt, at); return; }
+      if (!best || at > best.at) { info.at = at; best = info; }
+    });
+  });
+  if (best && canceledAt > best.at) return { canceled: true, name: best.name };
+  if (best && !best.address) {
+    for (let i = 0; i < KNOWN_GYM_ADDR_.length; i++) if (KNOWN_GYM_ADDR_[i][0].test(best.name)) { best.address = KNOWN_GYM_ADDR_[i][1]; break; }
+  }
+  return best;
+}
+function gymMailKey_(mo, d, h, mi) { return Number(mo) + '/' + Number(d) + ' ' + Number(h) + ':' + ('0' + Number(mi)).slice(-2); }
+/** 予約メール1通を読む。日時のキー（M/D H:MM）・ジム名・住所・キャンセルかどうか */
+function parseGymMail_(subject, body) {
+  subject = String(subject || ''); body = String(body || '').replace(/\r/g, '');
+  const cancel = /キャンセル/.test(subject);
+  let m, key = '', name = '', address = '';
+  if (/ジムカリ/.test(body) && (m = body.match(/■利用日時\s*\n\s*(\d{1,2})月(\d{1,2})日\([^)]*\)\s*(\d{1,2}):(\d{2})/))) {
+    if (!cancel && !/予約完了/.test(subject)) return null;
+    key = gymMailKey_(m[1], m[2], m[3], m[4]);
+    const a = body.match(/■住所\s*\n\s*(.+)/); address = a ? a[1].trim() : '';
+    const n = body.match(/「([^」]{2,40})」の当日/) || body.match(/■ジム名\s*\n\s*(.+)/); name = n ? n[1].trim() : '';
+  } else if (/TreTre|tre-tre/.test(subject + body) && (m = body.match(/利用開始:\s*\d{4}-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/))) {
+    if (!cancel && !/確定/.test(subject)) return null;
+    key = gymMailKey_(m[1], m[2], m[3], m[4]);
+    const n = body.match(/「([^」]+)」の(?:ご予約|予約)/); name = n ? n[1].trim() : '';
+  } else if ((m = body.match(/開始時間：\d{4}年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})/))) {
+    if (!cancel && !/予約を取りました/.test(subject)) return null;
+    key = gymMailKey_(m[1], m[2], m[3], m[4]);
+    const n = body.match(/店舗：\s*(.+)/); name = n ? n[1].trim() : '';
+  } else if ((m = body.match(/利用期間\s*\d{4}\/(\d{1,2})\/(\d{1,2})\([^)]*\)\s*(\d{1,2}):(\d{2})/))) {
+    // スペースマーケット：確定・承認のメールだけ（「変更リクエストを送信しました」はまだ確定していない）
+    if (/リクエストを送信/.test(subject + body.slice(0, 600))) return null;
+    if (!cancel && !/(確定|承認|承諾)/.test(subject)) return null;
+    key = gymMailKey_(m[1], m[2], m[3], m[4]);
+    const a = body.match(/\n住所\s+(.+)\n(?:<[^>\n]*>\n)?([^\n<]*)/);
+    if (a) address = (a[1].trim() + ' ' + String(a[2] || '').trim()).trim();
+    const n = body.match(/会場名\s+(.+)/) || body.match(/スペース名\s+(.+)/); name = n ? n[1].trim() : '';
+  } else return null;
+  return { key: key, name: name, address: address.replace(/\s+/g, ' '), cancel: cancel };
+}
+
 /**
  * 確定した予約の住所・入室方法（お客さんの予約ページ用）
  * 住所：予定の「場所」欄（ジムの予約メールから自動で書き込まれたもの）。登録ジムに合えばジムシートの住所
@@ -338,8 +407,10 @@ function calendarBookings_(c, gyms, st, now) {
 function placeInfo_(ev, g, s, e, now) {
   const loc = String(ev.location || '').trim();
   let address = '';
-  if (g && g.address && (!loc || loc.indexOf(g.name) === 0)) address = g.address;
-  else if (loc) address = loc.replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').replace(/（[^（）]*）\s*$/, '').replace(/^[^　]*　/, function (m) { return /\d/.test(m) ? m : ''; }).trim();
+  // 毎回ちがうジムを使う場所（新富町・六本木など）は、登録上の住所を出さない（2026-11-17：12/2で別のジムの住所を出してしまった）
+  // 住所を出すのは、場所が固定のジム（GlitteRなど）か、場所欄に実際のジム名（末尾の（ジム名））が入っているときだけ
+  if (g && isFixedGym_(g) && g.address && (!loc || loc.indexOf(g.name) === 0)) address = g.address;
+  else if (loc && /（[^（）]+）\s*$/.test(loc)) address = loc.replace(/^〒\s*(\d{3}-?\d{4})?\s*/, '').replace(/（[^（）]*）\s*$/, '').trim();
   let entry = '';
   String(ev.description || '').split(/\r?\n/).forEach(function (line) {
     const m = line.match(/^(?:入室|鍵)[：:]\s*(.+)$/); // 手で入れた予定は「鍵：」の書き方もある
@@ -810,14 +881,27 @@ function apiApprove(adminToken, bookingId, change) {
 
       if (changed) {
         ev.setTime(s, e);
-        ev.setLocation(gym.name + '　' + (gym.address || ''));
+        ev.setLocation(gym.name + '　' + (isFixedGym_(gym) ? gym.address || '' : ''));
         setGymTag_(st, ev, gym.id);
+      }
+      // 毎回ちがうジムを借りる場所は、ジムの予約メールから実際のジム名・住所を取って連絡・カレンダーに使う（登録上の住所は使わない）
+      let place = { name: gym.name, address: isFixedGym_(gym) ? (gym.address || '') : '' }, placeNote = '';
+      if (!isFixedGym_(gym)) {
+        const gm = findGymMail_(s);
+        if (gm && gm.canceled) fail_('この日時のジム予約（' + gm.name + '）はキャンセルのメールが届いています。ジムを予約し直してから承認してください。');
+        if (gm && gm.name && gm.address) {
+          place = { name: gm.name, address: gm.address };
+          ev.setLocation(gm.address + '（' + gm.name + '）');
+          placeNote = '予約メールのジム（' + gm.name + '）の住所で連絡しました。';
+        } else {
+          placeNote = '※' + (gm && gm.error ? gm.error : 'この日時のジムの予約メールが見つからなかったため') + '、住所は書かずに連絡しました（前日のご案内・予約ページには、ジムの予約メールの反映後に出ます）。';
+        }
       }
       ev.setTitle(c.calName);
       ev.setDescription(String(ev.getDescription() || '').replace('仮予約（承認待ち）', '確定') +
         (changed ? '\n変更前のご希望：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' + fmtTime_(e0) + '｜' + gym0.name : ''));
       const now = isoJst_(new Date());
-      const upd = { '状態': STATUS.CONFIRMED, '処理日時': now, 'ジム予定ID': rentalId };
+      const upd = { '状態': STATUS.CONFIRMED, '処理日時': now, 'ジム予定ID': rentalId, 'ジム名': place.name, 'ジム住所': place.address };
       if (changed) { upd['開始'] = isoJst_(s); upd['終了'] = isoJst_(e); upd['ジムID'] = gym.id; }
       updateCells_(SH.BOOKINGS, b._row, upd);
       if (changed) patchSlotsCache_(s, e); // 新しい時間を空き枠から外す（元の時間は10分ごとの更新で戻る）
@@ -846,18 +930,18 @@ function apiApprove(adminToken, bookingId, change) {
         const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
         const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
         const sentC = quiet ? null : sendTracked_(c, [b['予約ID']], c.name + 'さん\nご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
-          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + gym.name + (gym.address ? '\n住所：' + gym.address : '') + '\n残り回数：' + rem + '回\n\n当日お待ちしています！');
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + place.name + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + '回\n\n当日お待ちしています！');
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
-          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC));
+          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC)) + (placeNote ? '\n' + placeNote : '');
       }
       // まとめ承認（1件ずつの連絡を止めた承認）は、管理画面が最後にまとめ連絡を頼む。
       // 画面を閉じるなどで頼まれなかったときに備え、サーバー側にも「まとめ連絡待ち」を残す（5分たっても頼まれなければ自動で送る）
       if (quiet) addBatchPending_(c.id, b['予約ID']);
       const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
-        gym: gym.name, address: gym.address, remaining: rem
+        gym: place.name, address: place.address, remaining: rem
       }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : ''));
-      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent));
+      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent)) + (placeNote ? '\n' + placeNote : '');
     });
   });
 }
@@ -899,8 +983,13 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
 
 /** まとめて確定したときの文面（1人分） */
 function batchApproveText_(c, list, gyms) {
-  const gymOf = function (b) { return gymById_(gyms, b['ジムID']) || { id: b['ジムID'], name: b['ジムID'], address: '' }; };
-  const same = list.every(function (b) { return b['ジムID'] === list[0]['ジムID']; });
+  // 承認時に決めた実際のジム名・住所（予約シートの「ジム名」「ジム住所」）を使う。無い古い行は、場所が固定のジムだけ登録上の住所
+  const gymOf = function (b) {
+    const g = gymById_(gyms, b['ジムID']) || { id: b['ジムID'], name: b['ジムID'], address: '' };
+    if (b['ジム名']) return { name: b['ジム名'], address: b['ジム住所'] || '' };
+    return { name: g.name, address: isFixedGym_(g) ? (g.address || '') : '' };
+  };
+  const same = list.every(function (b) { return gymOf(b).name === gymOf(list[0]).name && gymOf(b).address === gymOf(list[0]).address; });
   const lines = list.map(function (b) {
     const s = new Date(b['開始']), e = new Date(b['終了']);
     return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + gymOf(b).name);
@@ -1818,4 +1907,11 @@ function escHtml_(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
+}
+
+/** エディタから一度実行して、Gmailを読む許可を与える（2026-11-17 予約メール確認のため追加）。結果はログに出る */
+function checkGymMail() {
+  const r = findGymMail_(new Date('2026-12-02T18:00:00+09:00'));
+  Logger.log(JSON.stringify(r));
+  return r;
 }
