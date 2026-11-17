@@ -178,9 +178,15 @@
 
   /* Keep the last slots reachable while the place picker is open. */
   body:has(.bar.show) main { padding-bottom:280px; }
-  body:has(.bar.show #placePick button) main { padding-bottom:360px; }
+  body:has(.bar.show #placePick button) main, body:has(.bar.show #shiftPick button) main { padding-bottom:360px; }
   .bar { z-index:20; max-height:75vh; max-height:75dvh; overflow-y:auto; }
   #placePick:empty { display:none; }
+  #shiftPick:empty { display:none; }
+  .shift { margin:0 0 10px; padding:10px 12px; border-radius:12px; background:var(--blue-pale); }
+  .shift .sl { font-size:12px; font-weight:700; color:var(--navy); margin-bottom:8px; }
+  .shift .sr { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+  .shift .sb { min-height:42px; border:1px solid var(--line); border-radius:10px; background:#fff; color:var(--ink); font-size:15px; font-weight:650; cursor:pointer; }
+  .shift .sb.on { background:var(--navy); border-color:var(--navy); color:#fff; }
   /* 「優先」ラベル（お客さんごとの優先ジム） */
   .gym .tag { display:inline-block; margin-left:6px; padding:1px 7px; border-radius:6px; background:#E9F2EE; color:#345D4D; font-size:11px; font-weight:700; line-height:1.6; vertical-align:1px; }
   .gym.on .tag { background:#ffffff26; color:#fff; }
@@ -513,6 +519,26 @@
   const hourOf = (t) => Number(t.label.split(':')[0]);
   const inBands = (t) => BANDS.some(([k, , , f, to]) => bandOn[k] && hourOf(t) >= f && hourOf(t) < to);
 
+  // 15分刻み（2026-11-17 さんぽん決定：案1＋案2）
+  // 空きは15分ごとに計算されてくる。ボタンは :00 / :30 だけ並べ、:15 / :45 は「前後の :00/:30 のどちらかが埋まっている」ときだけ足す（隙間の時間）
+  const Q = 15 * 60000;
+  const msOf = (t) => new Date(t.start).getTime();
+  function showTimes(times) {
+    const has = {}; times.forEach((t) => { has[msOf(t)] = 1; });
+    return times.filter((t) => {
+      const mm = new Date(msOf(t) + 9 * 3600000).getUTCMinutes();
+      if (mm % 30 === 0) return true;
+      return !has[msOf(t) - Q] || !has[msOf(t) + Q];
+    });
+  }
+  // 選んだ時間の前後15分で入れる時間（下のバーで「15分ずらす」を出す）
+  function nearTimes(p) {
+    const day = slots.find((d) => d.label === p.day);
+    if (!day) return [];
+    const base = p.base || p.start, b = new Date(base).getTime();
+    return day.times.filter((t) => Math.abs(msOf(t) - b) <= Q);
+  }
+
   // 空きのない日も日付ボタンに並べる（2026-11-10 さんぽん指示）。受付開始日〜最後に空きがある日までを1日ずつ埋める
   const DOW_JA = ['日', '月', '火', '水', '木', '金', '土'];
   function withEmptyDays(days) {
@@ -539,7 +565,7 @@
     if (!slots.length) { box.innerHTML = '<div class="note" style="margin-top:16px">予約できる枠が今はありません。トレーナーにご相談ください。</div>'; return; }
     // しぼり込み後の日付一覧（選んでいた日はなるべく保つ）
     const curLabel = window.__dayLabel;
-    const vs = withEmptyDays(slots.map((d) => ({ label: d.label, key: String(d.times[0].start).slice(0, 10), times: d.times.filter(inBands) })));
+    const vs = withEmptyDays(slots.map((d) => ({ label: d.label, key: String(d.times[0].start).slice(0, 10), times: showTimes(d.times).filter(inBands) })));
     let h = '<div class="bandf">' + BANDS.map(([k, n, r]) =>
       '<button class="bf' + (bandOn[k] ? ' on' : '') + '" data-band="' + k + '"><span class="box">' + (bandOn[k] ? '✓' : '') + '</span>' + n + '<small>' + r + '</small></button>').join('') + '</div>';
     if (!vs.some((d) => d.times.length)) {
@@ -600,6 +626,7 @@
       if (stale) return; // 最新の空きを確認中は押せない（前回の内容を表示しているため）
       picked = { start: el.getAttribute('data-start'), day: el.getAttribute('data-day'), label: el.getAttribute('data-label'),
         gyms: (el.getAttribute('data-gyms') || '').split(',').filter(Boolean) };
+      picked.base = picked.start;
       box.querySelectorAll('[data-start]').forEach((x) => x.classList.toggle('on', x === el));
       // その時間に空いている場所が1つなら自動で決定、複数なら場所を選んでもらう
       // 優先ジムが空いていれば最初から選んでおく（変えたい人だけ押し直す）
@@ -650,6 +677,27 @@
       place = document.createElement('div'); place.id = 'placePick'; place.className = 'gyms'; place.style.margin = '0 0 10px';
       $('reqBtn').parentNode.insertBefore(place, $('reqBtn'));
     }
+    // 開始時刻を15分ずらせる候補（入れる時間だけ）。候補が選んだ時間だけなら出さない
+    let shift = $('shiftPick');
+    if (!shift) {
+      shift = document.createElement('div'); shift.id = 'shiftPick'; shift.className = 'shift';
+      place.parentNode.insertBefore(shift, place);
+    }
+    const near = nearTimes(picked);
+    shift.innerHTML = near.length > 1 ? '<div class="sl">開始時刻を15分ずらせます</div><div class="sr">' + near.map((t) =>
+      '<button type="button" class="sb' + (t.start === picked.start ? ' on' : '') + '" data-shift="' + esc(t.start) + '">' + esc(t.label) + '</button>').join('') + '</div>' : '';
+    shift.querySelectorAll('[data-shift]').forEach((b) => b.addEventListener('click', () => {
+      const t = near.find((x) => x.start === b.getAttribute('data-shift'));
+      if (!t) return;
+      picked = Object.assign({}, picked, { start: t.start, label: t.label, gyms: (t.gyms || []).slice() });
+      if (gymId && picked.gyms.indexOf(gymId) < 0) gymId = null;
+      if (!gymId) gymId = picked.gyms.length === 1 ? picked.gyms[0] : (prefId() && picked.gyms.indexOf(prefId()) >= 0 ? prefId() : null);
+      // 一覧のボタンの色も合わせる（ずらした時間が一覧に無ければ、元のボタンを選んだままにする）
+      const btns = document.querySelectorAll('[data-start]');
+      const hit = [...btns].some((x) => x.getAttribute('data-start') === picked.start);
+      btns.forEach((x) => x.classList.toggle('on', x.getAttribute('data-start') === (hit ? picked.start : picked.base)));
+      renderBar();
+    }));
     const multi = picked.gyms.length > 1;
     $('selText').textContent = picked.day + ' ' + picked.label + '〜' + (gymId ? '（' + gymName(gymId) + '）' : '｜場所を選んでください');
     place.innerHTML = multi ? picked.gyms.map((id) =>
