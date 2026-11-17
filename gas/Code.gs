@@ -195,7 +195,7 @@ function doGet(e) {
  * body: {"fn":"apiSlots","args":[...]}  →  {"ok":true,"result":...} / {"ok":false,"error":"..."}
  */
 const PUBLIC_API_ = ['apiCustomerView', 'apiSlots', 'apiSlotsAll', 'apiRequest', 'apiAdminView', 'apiApprove',
-  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending', 'apiRequestCancel', 'apiRequestChange'];
+  'apiReject', 'apiCancel', 'apiAddTickets', 'apiIssueUrl', 'apiReschedule', 'apiNotifyApprovedBatch', 'apiCancelPending', 'apiRequestCancel', 'apiRequestChange', 'apiCheckGymMail'];
 function doPost(e) {
   let out;
   try {
@@ -205,7 +205,7 @@ function doPost(e) {
       apiAdminView: apiAdminView, apiApprove: apiApprove, apiReject: apiReject, apiCancel: apiCancel,
       apiAddTickets: apiAddTickets, apiIssueUrl: apiIssueUrl, apiReschedule: apiReschedule,
       apiNotifyApprovedBatch: apiNotifyApprovedBatch, apiCancelPending: apiCancelPending,
-      apiRequestCancel: apiRequestCancel, apiRequestChange: apiRequestChange };
+      apiRequestCancel: apiRequestCancel, apiRequestChange: apiRequestChange, apiCheckGymMail: apiCheckGymMail };
     out = { ok: true, result: fns[body.fn].apply(null, Array.isArray(body.args) ? body.args : []) };
   } catch (err) {
     out = { ok: false, error: err && err.message ? err.message : String(err) };
@@ -346,10 +346,18 @@ const KNOWN_GYM_ADDR_ = [ // メールに住所が書かれないサイト（Tre
 ];
 function findGymMail_(s) {
   const want = gymMailKey_(Utilities.formatDate(s, TZ, 'M'), Utilities.formatDate(s, TZ, 'd'), Utilities.formatDate(s, TZ, 'H'), Utilities.formatDate(s, TZ, 'mm'));
-  let threads;
+  // 速さのため、まずその日付が書かれたメールだけ探す。見つからなければ直近のメールを全部見る
+  const from = '(from:info@gymkari.jp OR from:noreply@send.space.tre-tre.com OR from:system@gyms.jp OR from:no-reply@spacemarket.com OR (from:thampon0306@gmail.com spacemarket))';
+  const y = Utilities.formatDate(s, TZ, 'yyyy'), mo = Utilities.formatDate(s, TZ, 'M'), mo2 = Utilities.formatDate(s, TZ, 'MM'), d = Utilities.formatDate(s, TZ, 'd'), d2 = Utilities.formatDate(s, TZ, 'dd');
+  const dates = '("' + mo + '月' + d + '日" OR "' + y + '-' + mo2 + '-' + d2 + '" OR "' + y + '年' + mo2 + '月' + d2 + '日" OR "' + y + '/' + mo + '/' + d + '" OR "' + y + '/' + mo2 + '/' + d2 + '")';
+  let r;
   try {
-    threads = GmailApp.search('(from:info@gymkari.jp OR from:noreply@send.space.tre-tre.com OR from:system@gyms.jp OR from:no-reply@spacemarket.com OR (from:thampon0306@gmail.com spacemarket)) newer_than:45d', 0, 100);
+    r = scanGymMail_(GmailApp.search(from + ' ' + dates + ' newer_than:60d', 0, 30), want);
+    if (!r) r = scanGymMail_(GmailApp.search(from + ' newer_than:45d', 0, 100), want);
   } catch (err) { return { error: 'メールを読めませんでした（' + err + '）' }; }
+  return r;
+}
+function scanGymMail_(threads, want) {
   let best = null, canceledAt = 0;
   threads.forEach(function (th) {
     th.getMessages().forEach(function (m) {
@@ -361,6 +369,7 @@ function findGymMail_(s) {
       if (!best || at > best.at) { info.at = at; best = info; }
     });
   });
+  if (!best && canceledAt) return { canceled: true, name: '' };
   if (best && canceledAt > best.at) return { canceled: true, name: best.name };
   if (best && !best.address) {
     for (let i = 0; i < KNOWN_GYM_ADDR_.length; i++) if (KNOWN_GYM_ADDR_[i][0].test(best.name)) { best.address = KNOWN_GYM_ADDR_[i][1]; break; }
@@ -1906,6 +1915,18 @@ function toMin_(v) {
 function escHtml_(s) {
   return String(s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+/** 管理画面・動作確認用：その日時のジム予約メールの読み取り結果を返す（読むだけ） */
+function apiCheckGymMail(adminToken, startIso) {
+  return guard_(function () {
+    requireAdmin_(adminToken);
+    const s = new Date(startIso);
+    if (isNaN(s.getTime())) fail_('日時が正しくありません。');
+    const t0 = Date.now();
+    const r = findGymMail_(s);
+    return { result: r, ms: Date.now() - t0 };
   });
 }
 
