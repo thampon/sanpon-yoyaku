@@ -434,7 +434,7 @@
   function costRows(d) {
     var c = d.cost || {}, biz = (c.business && c.business.months) || [], life = (c.life && c.life.months) || [];
     var months = biz.filter(function (m) { return m.kind === '実績'; }).map(function (m) { return m.month; })
-      .concat(life.map(function (m) { return m.month; })).filter(function (m, i, a) { return a.indexOf(m) === i && m <= d.current; }).sort().slice(-6);
+      .concat(life.map(function (m) { return m.month; })).filter(function (m, i, a) { return a.indexOf(m) === i && m <= d.current; }).sort().slice(-12); // データがたまれば最大1年（2026-11-19 社長指示）
     return months.map(function (m) {
       var b = biz.filter(function (x) { return x.month === m && x.kind === '実績'; })[0], l = life.filter(function (x) { return x.month === m; })[0];
       var bv = b && typeof b.total === 'number' ? b.total : null, lv = l ? l.total : null;
@@ -449,7 +449,7 @@
     var tot = rows.map(function (r) { return (typeof r.life === 'number' ? r.life : 0) + (typeof r.biz === 'number' ? r.biz : typeof r.bizFc === 'number' ? r.bizFc : 0); });
     var max = Math.max.apply(null, tot.concat([1]));
     var step = Math.pow(10, Math.floor(Math.log(max) / Math.LN10)), top = Math.ceil(max / step) * step; if (top / step < 3) top = Math.ceil(max / (step / 2)) * (step / 2);
-    var n = rows.length || 1, slot = (W - L - R) / n, bw = Math.min(30, slot - 12);
+    var n = rows.length || 1, slot = (W - L - R) / n, bw = Math.max(8, Math.min(30, slot - 10));
     var y = function (v) { return T + (H - T - B) * (1 - v / top); };
     var g = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top) + '" y2="' + y(top) + '" stroke="#ece9e3"/><line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top / 2) + '" y2="' + y(top / 2) + '" stroke="#ece9e3"/>' +
       '<text x="' + (W - R) + '" y="' + (y(top) - 4) + '" text-anchor="end" font-size="10" fill="#6b6f76">' + (top / 10000) + '万円</text>' +
