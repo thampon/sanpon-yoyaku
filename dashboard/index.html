@@ -70,8 +70,13 @@
   .st-late { color:#a3271c; font-weight:600; }
   .st-wait { color:var(--sub); font-weight:600; }
   .chart { position:relative; margin-top:8px; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; color:#6b6f76; margin-top:6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+  .legend i.ln { height:2px; width:14px; background:#1f2328; vertical-align:3px; border-radius:0; }
+  .legend i.gl { height:0; width:14px; border-top:2px dashed #b5452f; vertical-align:3px; border-radius:0; }
   .chart svg { display:block; width:100%; height:auto; overflow:visible; }
-  .chart .tip { position:absolute; pointer-events:none; background:var(--ink); color:#fff; font-size:12px; padding:4px 8px; border-radius:6px; white-space:nowrap; transform:translate(-50%,-110%); display:none; }
+  .chart .tip { position:absolute; pointer-events:none; background:var(--ink); color:#fff; font-size:12px; padding:4px 8px; border-radius:6px; white-space:nowrap; max-width:calc(100% - 8px); overflow-wrap:anywhere; transform:translate(-50%,-110%); display:none; }
+  .chart .tip.wrap { white-space:normal; width:min(250px, calc(100% - 8px)); }
   .kpis { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
   .kpis div { flex:1 1 0; min-width:120px; }
   .bar.over > span { background:#c25b4a; }
@@ -139,9 +144,13 @@
     main.innerHTML = h;
     document.getElementById('logout').addEventListener('click', logout);
     if (tab === 'sum') bindChart(d, 'chart', 'tip', function (i) { var t = d.trend[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得'); });
-    if (tab === 'rev') bindChart(d, 'pchart', 'ptip', function (i) { var x = (d.grossTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gross === 'number' ? '粗利 ' + yen(x.gross) + (typeof x.rate === 'number' ? '（' + x.rate.toFixed(1) + '%）' : '') + (x.state === '予測' ? '・予測' : '') : '未取得'); });
+    if (tab === 'rev') bindChart(d, 'pchart', 'ptip', function (i) {
+      var x = (d.grossTrend || [])[i]; if (typeof x.gross !== 'number') return Number(x.month.slice(5, 7)) + '月：未取得';
+      return Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '（予測）' : '') + '：売上 ' + (yen(x.sales) || '未取得') + '・原価 ' + (yen(x.cost) || '未取得') + '・粗利 ' + yen(x.gross) +
+        (typeof x.rate === 'number' ? '（' + x.rate.toFixed(1) + '%）' : '') + (d.grossGoal ? '・目標まで ' + (d.grossGoal.amount - x.gross > 0 ? yen(d.grossGoal.amount - x.gross) : '達成') : '');
+    });
     if (tab === 'ses') bindChart(d, 'schart', 'stip', function (i) { var t = (d.sessionTrend || [])[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.total === 'number' ? t.total + '回（実施 ' + t.done + '・予定 ' + t.plan + '）' : '未取得'); });
-    if (tab === 'ses') bindChart(d, 'gchart', 'gtip', function (i) { var x = (d.gymTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gym === 'number' ? yen(x.gym) + (x.state === '予測' ? '（予測）' : '') : '未取得'); });
+    if (tab === 'ses') bindChart(d, 'gchart', 'gtip', function (i) { var x = (d.gymTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '（予測）' : '') + '：' + (typeof x.perSession === 'number' ? '1回あたり ジム代 ' + yen(x.perSession) + (typeof x.travelPer === 'number' ? '＋交通費 ' + yen(x.travelPer) : '') : '未取得'); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-smonth]'), function (b) { b.addEventListener('click', function () { sesMonth = b.getAttribute('data-smonth'); render(lastData); }); });
     if (tab === 'cost') bindChart(d, 'cchart', 'ctip', function (i) { var x = costRows(d)[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.all === 'number' ? '合計 ' + yen(x.all) + '（経営 ' + yen(x.biz) + '・生活 ' + yen(x.life) + '）' : '未取得'); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-cmonth]'), function (b) { b.addEventListener('click', function () { costMonth = b.getAttribute('data-cmonth'); render(lastData); }); });
@@ -231,12 +240,46 @@
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(title || '月ごとの売上') + '：' + esc(desc) + '">' + g + '</svg>';
   }
 
+  // 売上・原価・粗利の棒＋粗利率の折れ線＋粗利の目標線（2026-11-18 経理部の依頼）
+  function grossComboSvg(gt, cur, goal) {
+    var W = 340, H = 200, L = 8, R = 30, T = 24, B = 26;
+    var nums = []; gt.forEach(function (x) { [x.sales, x.cost, x.gross].forEach(function (v) { if (typeof v === 'number') nums.push(v); }); });
+    var max = Math.max.apply(null, nums.concat([1, goal ? goal.amount : 0]));
+    var step = Math.pow(10, Math.floor(Math.log(max) / Math.LN10)), top = Math.ceil(max / step) * step; if (top / step < 3) top = Math.ceil(max / (step / 2)) * (step / 2);
+    var n = gt.length || 1, slot = (W - L - R) / n, bw = Math.max(4, Math.min(9, (slot - 6) / 3));
+    var y = function (v) { return T + (H - T - B) * (1 - Math.max(0, v) / top); }, yr = function (p) { return T + (H - T - B) * (1 - p / 100); };
+    var g = '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#cfcac2"/>' +
+      (goal && goal.amount === top ? '' : '<text x="' + L + '" y="' + (T - 8) + '" font-size="10" fill="#6b6f76">' + (top / 10000) + '万円</text>') +
+      '<text x="' + (W - 2) + '" y="' + (yr(100) + 3) + '" text-anchor="end" font-size="10" fill="#6b6f76">100%</text>' +
+      '<text x="' + (W - 2) + '" y="' + (yr(50) + 3) + '" text-anchor="end" font-size="10" fill="#6b6f76">50%</text>' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(top) + '" y2="' + y(top) + '" stroke="#ece9e3"/>';
+    if (goal && goal.amount > 0 && goal.amount <= top) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(goal.amount) + '" y2="' + y(goal.amount) + '" stroke="#b5452f" stroke-dasharray="5 3"/>' +
+      '<text x="' + L + '" y="' + (y(goal.amount) - 4) + '" font-size="10" fill="#b5452f">目標 ' + (goal.amount / 10000) + '万円</text>';
+    var colors = [['#b9c7d6', '#5b7894'], ['#e2c9a6', '#b07a3a'], ['#c4dbd3', '#1f6f5c']], pts = [];
+    gt.forEach(function (x, i) {
+      var cx = L + slot * i + slot / 2, fc = x.state === '予測';
+      [x.sales, x.cost, x.gross].forEach(function (v, k) {
+        var bx = cx - bw * 1.5 + bw * k;
+        if (typeof v !== 'number') return;
+        var yy = y(v), hgt = Math.max(1, y(0) - yy);
+        g += '<rect x="' + bx + '" y="' + (y(0) - hgt) + '" width="' + (bw - 1) + '" height="' + hgt + '" fill="' + (v < 0 ? '#c25b4a' : fc ? colors[k][0] : colors[k][1]) + '"' + (fc ? ' stroke="' + colors[k][1] + '" stroke-width="0.8" stroke-dasharray="2 2"' : '') + '/>';
+      });
+      if (typeof x.rate === 'number') pts.push([cx, yr(Math.max(0, Math.min(100, x.rate))), fc]);
+      g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="' + (x.month === cur ? '#1f2328' : '#6b6f76') + '"' + (x.month === cur ? ' font-weight="700"' : '') + '>' + Number(x.month.slice(5, 7)) + '月</text>';
+    });
+    for (var i = 1; i < pts.length; i++) g += '<line x1="' + pts[i - 1][0] + '" y1="' + pts[i - 1][1] + '" x2="' + pts[i][0] + '" y2="' + pts[i][1] + '" stroke="#1f2328" stroke-width="1.5"' + (pts[i][2] ? ' stroke-dasharray="4 3"' : '') + '/>';
+    pts.forEach(function (p) { g += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="2.8" fill="' + (p[2] ? '#fff' : '#1f2328') + '" stroke="#1f2328" stroke-width="1.2"/>'; });
+    gt.forEach(function (x, i) { g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>'; });
+    var desc = gt.map(function (x) { return Number(x.month.slice(5, 7)) + '月 ' + (typeof x.gross === 'number' ? '売上' + (yen(x.sales) || '未取得') + '・原価' + (yen(x.cost) || '未取得') + '・粗利' + yen(x.gross) + (x.state === '予測' ? '（予測）' : '') : '未取得'); }).join('、');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="月ごとの売上・原価・粗利と粗利率：' + esc(desc) + '">' + g + '</svg>';
+  }
+
   function bindChart(d, boxId, tipId, text) {
     var box = document.getElementById(boxId), tip = document.getElementById(tipId);
     if (!box) return;
     Array.prototype.forEach.call(box.querySelectorAll('.hit'), function (el) {
       var show = function () {
-        tip.textContent = text(Number(el.getAttribute('data-i')));
+        tip.textContent = text(Number(el.getAttribute('data-i'))); tip.classList.toggle('wrap', tip.textContent.length > 26);
         var rb = el.getBoundingClientRect(), bb = box.getBoundingClientRect();
         tip.style.display = 'block'; tip.style.top = '24px';
         var half = Math.min(tip.offsetWidth / 2, bb.width / 2); // 吹き出しが画面の外にはみ出さないように（2026-11-18）
@@ -245,6 +288,23 @@
       el.addEventListener('mouseenter', show); el.addEventListener('click', show);
       el.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
     });
+  }
+
+  // 粗利の目標（設定シート。初期値 50万円／月・2027年10月まで）との差
+  function goalRow(d, cur) {
+    var g = d.grossGoal; if (!g || typeof g.amount !== 'number' || g.amount <= 0) return '';
+    var dl = /^\d{4}-\d{2}$/.test(g.deadline || '') ? g.deadline.slice(0, 4) + '年' + Number(g.deadline.slice(5, 7)) + '月まで' : '';
+    var gap = typeof cur.gross === 'number' ? g.amount - cur.gross : null;
+    return '<div class="tgt" style="margin-top:12px"><div class="row" style="align-items:baseline"><div class="col"><div class="label">粗利の目標</div><div class="mid">' + esc(yen(g.amount)) + '<span class="sub" style="display:inline">／月</span></div>' + (dl ? '<div class="note">' + esc(dl) + '</div>' : '') + '</div>' +
+      '<div class="col"><div class="label">今月の目標との差</div><div class="mid">' + (gap === null ? '<span class="na">未取得</span>' : gap > 0 ? 'あと ' + esc(yen(gap)) : '達成') + '</div></div></div>' +
+      (gap !== null ? '<div class="bar" aria-hidden="true"><span style="width:' + Math.max(0, Math.min(100, cur.gross / g.amount * 100)).toFixed(1) + '%"></span></div><div class="note">今月の粗利は目標の ' + Math.round(cur.gross / g.amount * 100) + '%' + (cur.state === '予測' ? '（予測）' : '') + '</div>' : '') + '</div>';
+  }
+  // 締め前の月：原価の見込みと、今わかっている原価（粗利_月次のM列）を並べる
+  function closeRow(cur) {
+    if (cur.state !== '予測' || typeof cur.cost !== 'number') return '';
+    return '<div class="note" style="margin-top:8px">今月はまだ締め前です。原価の見込み ' + esc(yen(cur.cost)) +
+      (typeof cur.gym === 'number' && typeof cur.travel === 'number' ? '（ジム代 ' + esc(yen(cur.gym)) + '＋交通費 ' + esc(yen(cur.travel)) + '）' : '') +
+      ' ／ 今わかっている原価 ' + (typeof cur.known === 'number' ? esc(yen(cur.known)) : '未取得') + '</div>';
   }
 
   function renderGross(d) {
@@ -256,15 +316,18 @@
       (typeof cur.rate === 'number' ? '<div class="note">粗利率 ' + cur.rate.toFixed(1) + '%</div>' : '') + '</div>' +
       '<div class="col"><div class="label">' + esc(d.current.slice(0, 4)) + '年の粗利の見込み</div><div class="mid">' + val(d.grossYear || {}, yen) + fcTag(d.grossYear) + '</div>' +
       '<div class="note">うち今月までの累計 ' + val(d.grossYtd || {}, yen) + '</div></div></div>' +
-      '<div class="label" style="margin-top:12px">月ごとの粗利（直近6か月＋3か月先）</div><div class="chart" id="pchart">' +
-      chartSvg(gt.map(function (x) { return { month: x.month, value: x.gross, state: x.state }; }), d.current, '月ごとの粗利') + '<div class="tip" id="ptip"></div></div>' +
-      '<div class="note">薄い棒（点線の枠）は予測。棒をタップすると内訳が出ます。</div>';
+      goalRow(d, cur) + closeRow(cur) +
+      '<div class="label" style="margin-top:12px">月ごとの売上・原価・粗利（直近6か月＋3か月先）</div>' +
+      '<div class="legend"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#b07a3a"></i>原価</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率（右の目盛り）</span>' + (d.grossGoal ? '<span><i class="gl"></i>粗利の目標</span>' : '') + '</div>' +
+      '<div class="chart" id="pchart">' + grossComboSvg(gt, d.current, d.grossGoal) + '<div class="tip" id="ptip"></div></div>' +
+      '<div class="note">薄い棒（点線の枠）と点線の折れ線は予測。棒をタップすると内訳が出ます。</div>';
     h += '<ul class="list">' + gt.map(function (x) {
       return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) +
-        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − 原価 ' + (typeof x.cost === 'number' ? esc(yen(x.cost)) : '未取得') + '</span></span>' +
+        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − 原価 ' + (typeof x.cost === 'number' ? esc(yen(x.cost)) : '未取得') + '</span>' +
+        (x.state === '予測' && typeof x.known === 'number' && x.known > 0 ? '<span class="sub">今わかっている原価 ' + esc(yen(x.known)) + '（締め前）</span>' : '') + '</span>' +
         '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + '<span class="sub" style="text-align:right">' + (typeof x.rate === 'number' ? '粗利率 ' + x.rate.toFixed(1) + '%' : '') + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
     }).join('') + '</ul>';
-    h += '<div class="note">粗利＝売上 − 原価（レンタルジム代＋PTの日の交通費。経理部の料金表「粗利_月次」）。予測は今の会員がそのまま続く前提の見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。広告費などの経費は引いていません。</div></section>';
+    h += '<div class="note">粗利＝売上 − 原価（レンタルジム代＋PTの日の交通費。経理部の料金表「粗利_月次」）。予測は経理部の会員計画（新規 毎月2人など）にもとづく見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。交通費が原価に入っているのは2026年8月27日からで、それより前の月の粗利率は少し高めに出ます。広告費などの経費は引いていません。</div></section>';
     return h;
   }
 
@@ -352,15 +415,15 @@
     // レンタルジム代
     var gt = d.gymTrend || [];
     if (gt.length) {
-      h += '<section class="card"><div class="label">レンタルジム代の推移（料金表PL）</div><div class="chart" id="gchart">' +
-        chartSvg(gt.map(function (x) { return { month: x.month, value: x.gym, state: x.state }; })) + '<div class="tip" id="gtip"></div></div>' +
-        '<div class="note">薄い棒は予測。棒をタップすると金額が出ます。</div>';
+      h += '<section class="card"><div class="label">1セッションあたりの原価（ジム代＋交通費）</div><div class="chart" id="gchart">' +
+        chartSvg(gt.map(function (x) { return { month: x.month, value: typeof x.perSession === 'number' && typeof x.travelPer === 'number' ? x.perSession + x.travelPer : null, state: x.state }; }), null, '1セッションあたりの原価') + '<div class="tip" id="gtip"></div></div>' +
+        '<div class="note">薄い棒は予測。棒をタップすると内訳が出ます。</div>';
       h += '<ul class="list">' + gt.slice().reverse().map(function (x) {
         return '<li><span>' + Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '<span class="tag fc">予測</span>' : '') +
-          '<span class="sub">ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + ' ÷ ' + (typeof x.calendar === 'number' ? x.calendar + '回' : '未取得') + '</span></span>' +
-          '<span class="amt">' + (typeof x.perSession === 'number' ? esc(yen(x.perSession)) + '<span class="sub" style="text-align:right">1回あたり</span>' : '<span class="na">未取得</span>') + '</span></li>';
+          '<span class="sub">ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + '・交通費 ' + (typeof x.travel === 'number' ? esc(yen(x.travel)) : '未取得') + ' ÷ ' + (typeof x.calendar === 'number' ? x.calendar + '回' : '未取得') + '</span></span>' +
+          '<span class="amt">' + (typeof x.perSession === 'number' && typeof x.travelPer === 'number' ? esc(yen(x.perSession + x.travelPer)) + '<span class="sub" style="text-align:right">ジム代 ' + esc(yen(x.perSession)) + '＋交通費 ' + esc(yen(x.travelPer)) + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
       }).join('') + '</ul>';
-      h += '<div class="note">1回あたり＝その月のレンタルジム代（料金表PL）÷ カレンダーのセッション回数。今月は予定も含めた回数で割り、ジム代は経理部の見込み（予測）。カレンダーに入っていないセッションがある月は高めに出ます。</div></section>';
+      h += '<div class="note">1回あたり＝その月のレンタルジム代・PTの日の交通費（料金表「粗利_月次」）÷ カレンダーのセッション回数。今月は予定も含めた回数で割り、金額は経理部の見込み（予測）。交通費は2026年8月27日から。カレンダーに入っていないセッションがある月は高めに出ます。</div></section>';
     }
     return h;
   }
