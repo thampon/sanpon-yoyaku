@@ -129,6 +129,7 @@
     main.innerHTML = h;
     document.getElementById('logout').addEventListener('click', logout);
     if (tab === 'sum') bindChart(d, 'chart', 'tip', function (i) { var t = d.trend[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得'); });
+    if (tab === 'rev') bindChart(d, 'pchart', 'ptip', function (i) { var x = (d.grossTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gross === 'number' ? '粗利 ' + yen(x.gross) + (typeof x.rate === 'number' ? '（' + x.rate.toFixed(1) + '%）' : '') + (x.state === '予測' ? '・予測' : '') : '未取得'); });
     if (tab === 'ses') bindChart(d, 'schart', 'stip', function (i) { var t = (d.sessionTrend || [])[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.total === 'number' ? t.total + '回（実施 ' + t.done + '・予定 ' + t.plan + '）' : '未取得'); });
     if (tab === 'ses') bindChart(d, 'gchart', 'gtip', function (i) { var x = (d.gymTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gym === 'number' ? yen(x.gym) + (x.state === '予測' ? '（予測）' : '') : '未取得'); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-smonth]'), function (b) { b.addEventListener('click', function () { sesMonth = b.getAttribute('data-smonth'); render(lastData); }); });
@@ -189,7 +190,8 @@
   }
 
   // 1系列の棒グラフ（凡例なし：見出しが系列名）。最新月だけ数値を直接表示、他はタップで表示
-  function chartSvg(trend) {
+  // cur を渡すとその月を濃く・数値つきに（渡さなければ最後の月）。title は読み上げ用
+  function chartSvg(trend, cur, title) {
     var W = 340, H = 170, L = 8, R = 8, T = 22, B = 26;
     var vals = trend.map(function (t) { return typeof t.value === 'number' ? t.value : null; });
     var fc = trend.map(function (t) { return t.state === '予測'; });
@@ -202,19 +204,19 @@
       '<text x="' + (W - R) + '" y="' + (y(top) - 4) + '" text-anchor="end" font-size="10" fill="#6b6f76">' + (top >= 10000 ? (top / 10000) + '万円' : top + '円') + '</text>' +
       '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#cfcac2" stroke-width="1"/>';
     trend.forEach(function (t, i) {
-      var cx = L + slot * i + slot / 2, x = cx - bw / 2, v = vals[i];
+      var cx = L + slot * i + slot / 2, x = cx - bw / 2, v = vals[i], hl = cur ? t.month === cur : i === n - 1;
       if (v === null) {
         g += '<rect x="' + x + '" y="' + (y(0) - 14) + '" width="' + bw + '" height="14" rx="4" fill="none" stroke="#b9b4ab" stroke-dasharray="3 3"/>';
       } else {
-        var yy = y(v), hgt = Math.max(2, y(0) - yy), r = Math.min(4, hgt / 2);
-        g += '<path d="M' + x + ',' + y(0) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + y(0) + 'Z" fill="' + (fc[i] ? '#c4dbd3' : (i === n - 1 ? '#1f6f5c' : '#7fae9f')) + '"' + (fc[i] ? ' stroke="#1f6f5c" stroke-width="1" stroke-dasharray="3 2"' : '') + '/>';
-        if (i === n - 1) g += '<text x="' + cx + '" y="' + (yy - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + (v / 10000).toFixed(1) + '万' + (fc[i] ? '（予測）' : '') + '</text>';
+        var yy = y(Math.max(0, v)), hgt = Math.max(2, y(0) - yy), r = Math.min(4, hgt / 2);
+        g += '<path d="M' + x + ',' + y(0) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + y(0) + 'Z" fill="' + (v < 0 ? '#c25b4a' : fc[i] ? '#c4dbd3' : (hl ? '#1f6f5c' : '#7fae9f')) + '"' + (fc[i] ? ' stroke="#1f6f5c" stroke-width="1" stroke-dasharray="3 2"' : '') + '/>';
+        if (hl || v < 0) g += '<text x="' + cx + '" y="' + (yy - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + (v / 10000).toFixed(1) + '万' + (fc[i] ? '（予測）' : '') + '</text>';
       }
       g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#6b6f76">' + Number(t.month.slice(5, 7)) + '月</text>';
       g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>';
     });
     var desc = trend.map(function (t, i) { return Number(t.month.slice(5, 7)) + '月 ' + (vals[i] === null ? '未取得' : vals[i] + '円' + (fc[i] ? '（予測）' : '')); }).join('、');
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="月ごとの売上：' + esc(desc) + '">' + g + '</svg>';
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(title || '月ごとの売上') + '：' + esc(desc) + '">' + g + '</svg>';
   }
 
   function bindChart(d, boxId, tipId, text) {
@@ -224,16 +226,39 @@
       var show = function () {
         tip.textContent = text(Number(el.getAttribute('data-i')));
         var rb = el.getBoundingClientRect(), bb = box.getBoundingClientRect();
-        tip.style.left = Math.min(Math.max(rb.left - bb.left + rb.width / 2, 50), bb.width - 50) + 'px'; tip.style.top = '24px'; tip.style.display = 'block';
+        tip.style.display = 'block'; tip.style.top = '24px';
+        var half = Math.min(tip.offsetWidth / 2, bb.width / 2); // 吹き出しが画面の外にはみ出さないように（2026-11-18）
+        tip.style.left = Math.min(Math.max(rb.left - bb.left + rb.width / 2, half), bb.width - half) + 'px';
       };
       el.addEventListener('mouseenter', show); el.addEventListener('click', show);
       el.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
     });
   }
 
+  function renderGross(d) {
+    var gt = d.grossTrend || [];
+    if (!gt.length) return '';
+    var cur = gt.filter(function (x) { return x.month === d.current; })[0] || {};
+    var h = '<section class="card"><div class="row"><div class="col"><div class="label">今月（' + monthJa(d.current) + '）の粗利</div><div class="big">' +
+      (typeof cur.gross === 'number' ? esc(yen(cur.gross)) + fcTag(cur) : '<span class="na">未取得</span>') + '</div>' +
+      (typeof cur.rate === 'number' ? '<div class="note">粗利率 ' + cur.rate.toFixed(1) + '%</div>' : '') + '</div>' +
+      '<div class="col"><div class="label">' + esc(d.current.slice(0, 4)) + '年の粗利の見込み</div><div class="mid">' + val(d.grossYear || {}, yen) + fcTag(d.grossYear) + '</div>' +
+      '<div class="note">うち今月までの累計 ' + val(d.grossYtd || {}, yen) + '</div></div></div>' +
+      '<div class="label" style="margin-top:12px">月ごとの粗利（直近6か月＋3か月先）</div><div class="chart" id="pchart">' +
+      chartSvg(gt.map(function (x) { return { month: x.month, value: x.gross, state: x.state }; }), d.current, '月ごとの粗利') + '<div class="tip" id="ptip"></div></div>' +
+      '<div class="note">薄い棒（点線の枠）は予測。棒をタップすると内訳が出ます。</div>';
+    h += '<ul class="list">' + gt.map(function (x) {
+      return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) +
+        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + '</span></span>' +
+        '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + '<span class="sub" style="text-align:right">' + (typeof x.rate === 'number' ? '粗利率 ' + x.rate.toFixed(1) + '%' : '') + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
+    }).join('') + '</ul>';
+    h += '<div class="note">粗利＝売上 − レンタルジム代（経理部の料金表PL「売上総利益」）。予測は今の会員がそのまま続く前提の見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。広告費などの経費は引いていません。</div></section>';
+    return h;
+  }
+
   function renderRevenue(d) {
     var det = d.detail && d.detail.revenue;
-    if (!det) return '<section class="card"><div class="label">売上の内訳</div><span class="na">未取得</span><div class="note">料金表を読めなかったか、まだ更新されていません。「更新」を押してください。</div></section>';
+    if (!det) return renderGross(d) + '<section class="card"><div class="label">売上の内訳</div><span class="na">未取得</span><div class="note">料金表を読めなかったか、まだ更新されていません。「更新」を押してください。</div></section>';
     var totals = det.totals || {}, kinds = det.kinds || {};
     var months = Object.keys(det.byMonth).concat(Object.keys(det.unsent || {})).concat(typeof totals[d.current] === 'number' ? [d.current] : [])
       .filter(function (m, i, a) { return a.indexOf(m) === i && m <= d.current; }).sort();
@@ -241,7 +266,7 @@
       var withRows = months.filter(function (m) { return (det.byMonth[m] || []).length; });
       revMonth = (det.byMonth[d.current] || []).length ? d.current : (withRows[withRows.length - 1] || months[months.length - 1]);
     }
-    var h = '<section class="card"><div class="label">売上の内訳（月ごと・お客さんごと）</div><div class="chips" role="group" aria-label="月を選ぶ">' +
+    var h = renderGross(d) + '<section class="card"><div class="label">売上の内訳（月ごと・お客さんごと）</div><div class="chips" role="group" aria-label="月を選ぶ">' +
       months.map(function (m) { return '<button type="button" data-month="' + m + '" aria-pressed="' + (m === revMonth) + '">' + esc(m.slice(0, 4)) + '年' + Number(m.slice(5, 7)) + '月' + (kinds[m] === '予測' ? '（予測）' : '') + '</button>'; }).join('') + '</div>';
     var rows = det.byMonth[revMonth] || [];
     if (!rows.length && kinds[revMonth] === '予測') h += '<div class="note">この月はまだ締まっていないので、料金表には見込みの合計だけがあります：<b>' + esc(yen(totals[revMonth])) + '</b>（予測）。お客さんごとの内訳は、経理部の月の締めのあとに出ます。</div>';
