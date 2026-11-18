@@ -529,11 +529,14 @@
     else {
       var last = as[as.length - 1], goal = c.assetGoal, gp = goal && typeof last.total === 'number' ? Math.min(100, Math.round(last.total / goal * 100)) : 0;
       h += '<div class="label">' + esc(last.month.slice(0, 4)) + '年' + monthJa(last.month) + '末の資産総額</div><div class="big">' + cell(last.total) + '</div>' +
-        '<div class="note">暮らせる月数：' + (typeof last.months === 'number' ? '<b>' + last.months.toFixed(1) + 'か月</b>' : '<span class="na">未取得</span>') + '</div>';
+        (last.monthsList && last.monthsList.length ? '<div class="note">暮らせる月数：' + last.monthsList.map(function (x) { return (x.name ? esc(x.name) + ' ' : '') + '<b>' + x.value.toFixed(1) + 'か月</b>'; }).join('／') + '</div>'
+          : typeof last.months === 'number' ? '<div class="note">暮らせる月数：<b>' + last.months.toFixed(1) + 'か月</b></div>' : '');
       if (goal) h += '<div class="goal"><div class="row"><div class="col">目標 ' + esc(yen(goal)) + '</div><div><b>' + (typeof last.total === 'number' ? (last.total >= goal ? '達成' : 'あと' + esc(yen(goal - last.total))) : '') + '</b></div></div><div class="bar" role="img" aria-label="' + gp + '%"><span style="width:' + gp + '%"></span></div></div>';
       var prevA = as.length > 1 ? as[as.length - 2] : null;
       if (prevA && typeof prevA.total === 'number' && typeof last.total === 'number') { var df = last.total - prevA.total; h += '<div class="note">前の月から ' + (df >= 0 ? '+' : '−') + esc(yen(Math.abs(df))) + '</div>'; }
-      h += '<ul class="list" style="margin-top:8px">' + [['現金', last.cash], ['証券', last.stock], ['確定拠出年金', last.dc], ['カード利用残高', last.card], ['生活費（月）', last.living]].filter(function (x) { return typeof x[1] === 'number'; })
+      var parts = last.items ? last.items.map(function (x) { return [esc(x.name), x.value]; }) : [['現金', last.cash], ['証券', last.stock], ['確定拠出年金', last.dc], ['カード利用残高', last.card]];
+      parts.push(['生活費（月）', last.living]);
+      h += '<ul class="list" style="margin-top:8px">' + parts.filter(function (x) { return typeof x[1] === 'number'; })
         .map(function (x) { return '<li><span>' + x[0] + '</span><span class="amt">' + esc(yen(x[1])) + '</span></li>'; }).join('') + '</ul>';
     }
     h += '<div class="note">出どころ：経理部の「Sunpeace_家計管理」（社長だけが見られるファイル。読むだけ）。家計の数字はKINDOU月報用の「数字」シートには入れていません。</div></section>';
