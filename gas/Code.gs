@@ -329,6 +329,20 @@ function calendarBookings_(c, gyms, st, now) {
   return out;
 }
 
+/**
+ * 管理画面の確定予約に出す、実際に借りたジムの名前・住所（2026-11-18 さんぽん依頼）
+ * カレンダーの場所欄に「住所（ジム名）」が入っていればそれ。無ければ予約シートの「ジム名・ジム住所」。場所が固定のジムは登録上の住所
+ * 毎回ちがうジムの場所で、どれも無ければ address は空（＝ジムの住所が未登録）
+ */
+function adminPlace_(b, g) {
+  const loc = String(LOC_BY_UID_[b['予定ID']] || '').trim();
+  const m = loc.match(/^(.*)（([^（）]+)）\s*$/);
+  if (m) return { name: m[2].trim(), address: m[1].replace(/^〒\s*(\d{3}-?\d{4})?\s*/, '').trim() };
+  if (b['ジム住所']) return { name: b['ジム名'] || (g ? g.name : ''), address: b['ジム住所'] };
+  if (g && isFixedGym_(g)) return { name: g.name, address: g.address || '' };
+  return { name: g ? g.name : '', address: '' };
+}
+
 /** 場所が固定のジムか（GlitteRのように、空き確認カレンダーか入室方法が登録されているもの）。それ以外は毎回ちがうジムを借りる場所 */
 function isFixedGym_(g) { return !!(g && (g.checkCal || g.entry)); }
 
@@ -766,6 +780,7 @@ function apiAdminView(adminToken) {
         date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e), status: b['状態'],
         requestedAt: b['申請日時'] ? fmtDay_(new Date(b['申請日時'])) + ' ' + fmtTime_(new Date(b['申請日時'])) : '',
         remaining: remainingOf(b['顧客ID']), past: e < now,
+        place: b['状態'] === STATUS.CONFIRMED ? adminPlace_(b, gymById_(gyms, b['ジムID'])) : null,
         cancelRequest: b['キャンセル申請'] || '',
         changeOf: (function () {
           if (!b['変更元']) return '';
@@ -1087,17 +1102,19 @@ function apiCancel(adminToken, bookingId, refund) {
 }
 
 /** 期間内の予定を1回で取り、iCalUID → 開始日時 の対応表を返す */
+let LOC_BY_UID_ = {}; // startsByUid_ で一緒に取った予定の「場所」欄（管理画面の確定予約に住所を出すため）
 function startsByUid_(calId, from, to) {
   const map = {};
   let pageToken;
   do {
     const res = Calendar.Events.list(calId, {
       timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: true, maxResults: 2500, pageToken: pageToken,
-      fields: 'nextPageToken,items(iCalUID,start,status)'
+      fields: 'nextPageToken,items(iCalUID,start,status,location)'
     });
     (res.items || []).forEach(function (ev) {
       if (ev.status === 'cancelled' || !ev.iCalUID || !ev.start) return;
       map[ev.iCalUID] = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00+09:00');
+      LOC_BY_UID_[ev.iCalUID] = ev.location || '';
     });
     pageToken = res.nextPageToken;
   } while (pageToken);

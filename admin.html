@@ -75,6 +75,10 @@
   .bulkbar .btn { width: 100%; min-height: 48px; font-size: 16px; }
   .modal ul.pl { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
   @media (max-width: 560px) { .hide-sm { display: none; } }
+  .placeln { display:flex; align-items:center; gap:8px; margin:6px 0 2px; font-size:13px; }
+  .placeln .pa { flex:1; min-width:0; overflow-wrap:anywhere; }
+  .placeln .btn.map { flex:none; min-height:36px; padding:0 14px; font-size:13px; text-decoration:none; display:inline-flex; align-items:center; }
+  .placeln.none { color:var(--warn); }
 </style>
 </head>
 <body>
@@ -218,7 +222,11 @@
     return '<div class="card"><div class="row"><div>' +
       (b.changeOf ? '<div class="chgtag">🔁 日時変更の申請（元：' + esc(b.changeOf) + '）承認すると元の予約は自動でキャンセル・回数は差し引きゼロ</div>' : '') +
       '<div class="title">' + esc(b.date) + ' ' + esc(b.time) + '</div>' +
-      '<div>' + esc(b.name) + 'さん｜' + esc(b.gym) + '</div>' +
+      '<div>' + esc(b.name) + 'さん｜' + esc(b.place && b.place.name ? b.place.name : b.gym) + '</div>' +
+      // 確定予約は、実際に借りたジムの住所と地図ボタン（2026-11-18）。住所が分からない予約は「未登録」と出す
+      (b.place ? (b.place.address
+        ? '<div class="placeln"><span class="pa">📍 ' + esc(b.place.address) + '</span><a class="btn map" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(b.place.address) + '" target="_blank" rel="noopener">地図</a></div>'
+        : '<div class="placeln none">📍 ジムの住所が未登録です（ジムの予約メールの反映待ち、または手で入れた予定）</div>') : '') +
       '<div class="muted">' + (b.requestedAt ? '申請 ' + esc(b.requestedAt) + '｜' : '') + '残回数 ' + esc(b.remaining) + '回' + (b.past ? '｜<b style="color:var(--warn)">日時を過ぎています</b>' : '') + '</div>' +
       '</div></div><div class="actions">' + buttons + '</div></div>';
   }
