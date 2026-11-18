@@ -89,7 +89,7 @@ const DEFAULT_ROWS = {
     ['TRAVEL_DEFAULT_MIN', '60', '移動時間シートにない組み合わせの移動時間（分）'],
     ['ALLDAY_BLOCK_WORDS', '休,NG,×,出張', '終日予定のうち、タイトルにこの語を含むものはその日を丸ごと予約不可にする（カンマ区切り）'],
     ['STALE_HOURS', '24', '仮予約が何時間放置されたら毎朝リマインドするか'],
-    ['TEMPLATE_APPROVE', '{name}さん\nご予約が確定しました。\n\n日時：{date} {time}\n場所：{gym}\n住所：{address}\n残り回数：{remaining}回\n\n当日お待ちしています！', '確定時に顧客へ送る文面'],
+    ['TEMPLATE_APPROVE', 'ご予約が確定しました。\n\n日時：{date} {time}\n場所：{gym}\n住所：{address}\n残り回数：{remaining}', '確定時に顧客へ送る文面（2026-11-19 簡素化）'],
     ['TEMPLATE_REJECT', '{name}さん\n申請いただいた {date} {time}（{gym}）は、ジムの空きが確保できずお受けできませんでした。{reason}\nお手数ですが、別の日時で再度ご予約ください。\n{url}', '却下時に顧客へ送る文面'],
     ['TEMPLATE_CANCEL', '{name}さん\n{date} {time}（{gym}）のご予約をキャンセルしました。\n{refund}\n残り回数：{remaining}回', 'キャンセル時に顧客へ送る文面'],
     ['RENTAL_TITLE', '[レンタル]さんぽん_{name}', '承認時にジム側カレンダー（ブース2など）へ入れる予定のタイトル']
@@ -958,8 +958,8 @@ function apiApprove(adminToken, bookingId, change) {
       if (chgOf) {
         const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
         const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
-        const sentC = quiet ? null : sendTracked_(c, [b['予約ID']], c.name + 'さん\nご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
-          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + place.name + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + '回\n\n当日お待ちしています！');
+        const sentC = quiet ? null : sendTracked_(c, [b['予約ID']], 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + SIGNATURE_SHORT_);
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
           (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC)) + (placeNote ? '\n' + placeNote : '');
       }
@@ -968,8 +968,8 @@ function apiApprove(adminToken, bookingId, change) {
       if (quiet) addBatchPending_(c.id, b['予約ID']);
       const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
-        gym: place.name, address: place.address, remaining: rem
-      }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : ''));
+        gym: mapLink_(place.name, place.address), address: place.address, remaining: rem
+      }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : '') + SIGNATURE_SHORT_);
       return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent)) + (placeNote ? '\n' + placeNote : '');
     });
   });
@@ -1021,16 +1021,16 @@ function batchApproveText_(c, list, gyms) {
   const same = list.every(function (b) { return gymOf(b).name === gymOf(list[0]).name && gymOf(b).address === gymOf(list[0]).address; });
   const lines = list.map(function (b) {
     const s = new Date(b['開始']), e = new Date(b['終了']);
-    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + gymOf(b).name);
+    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + mapLink_(gymOf(b).name, gymOf(b).address));
   });
-  const out = [c.name + 'さん', 'ご予約が確定しました（' + list.length + '件）。', ''].concat(lines);
+  const out = ['ご予約が確定しました（' + list.length + '件）。', ''].concat(lines);
   if (same) {
     const g = gymOf(list[0]);
-    out.push('', '場所：' + g.name);
+    out.push('', '場所：' + mapLink_(g.name, g.address));
     if (g.address) out.push('住所：' + g.address);
   }
-  out.push((same ? '' : '\n') + '残り回数：' + c.remaining + '回', '', '当日お待ちしています！');
-  return out.join('\n');
+  out.push((same ? '' : '\n') + '残り回数：' + c.remaining);
+  return out.join('\n') + SIGNATURE_SHORT_;
 }
 
 function apiReject(adminToken, bookingId, reason) {
@@ -1194,8 +1194,8 @@ function apiReschedule(adminToken, bookingId, change) {
 
       let sentNote = 'お客さんには連絡していません。';
       if (change.notify !== false) {
-        const sent = sendTracked_(c, [b['予約ID']], c.name + 'さん\nご予約の日時・場所を変更しました。\n\n変更前：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' + fmtTime_(e0) + '｜' + gym0.name +
-          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + gym.name + (gym.address ? '\n住所：' + gym.address : '') + '\n\n当日お待ちしています！');
+        const sent = sendTracked_(c, [b['予約ID']], 'ご予約の日時・場所を変更しました。\n\n変更前：' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜' + fmtTime_(e0) + '｜' + gym0.name +
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(gym.name, gym.address) + (gym.address ? '\n住所：' + gym.address : '') + SIGNATURE_SHORT_);
         sentNote = sentNote_(sent);
       }
       return '変更しました（' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜｜' + gym.name + '）。' + rentalNote + sentNote;
@@ -1660,6 +1660,13 @@ function appendRow_(name, obj) {
 // ===== Slack =====
 /** お客さんへの連絡の末尾に付ける名乗り（経理部・カスタマーサクセス部と共通の「運営AI」） */
 const SIGNATURE_ = '\n\n━━━━━━━━━━━━\n:robot_face: *運営AI*\n━━━━━━━━━━━━';
+/** ジム名をGoogleマップへのリンクにする（Slackの書式 <URL|文字>。住所が無ければジム名だけ）（2026-11-19 社長依頼） */
+function mapLink_(name, address) {
+  const n = String(name || '').replace(/[<>|]/g, ' ').replace(/&/g, '&amp;');
+  return address ? '<https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address) + '|' + n + '>' : n;
+}
+/** 確定・変更の連絡用の短い署名（2026-11-19 社長指示で簡素化）。本文に名乗りが入っていれば SIGNATURE_ は付けない */
+const SIGNATURE_SHORT_ = '\n\n:robot_face: *運営AI*';
 /** 顧客の既存DMチャンネルに、さんぽん本人として投稿（ユーザートークン） */
 /**
  * お客さんへの連絡（予約に結びつくもの）。結果を予約シートの「連絡」列に残し、
@@ -1795,7 +1802,7 @@ function sendCustomer_(c, text) {
       method: 'post',
       contentType: 'application/json; charset=utf-8',
       headers: { Authorization: 'Bearer ' + tok },
-      payload: JSON.stringify({ channel: c.slack, text: text + SIGNATURE_ }),
+      payload: JSON.stringify({ channel: c.slack, text: text.indexOf(':robot_face:') >= 0 ? text : text + SIGNATURE_ }),
       muteHttpExceptions: true
     });
     const j = JSON.parse(res.getContentText());
