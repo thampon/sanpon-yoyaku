@@ -47,7 +47,7 @@
   .linkbtn { background:none; border:0; color:var(--sub); font-size:13px; text-decoration:underline; min-height:44px; padding:0 4px; }
   .foot { text-align:center; margin-top:8px; }
   .tabs { position:sticky; top:64px; z-index:1; display:flex; gap:6px; padding:6px 12px 8px; background:var(--bg); }
-  .tabs button { flex:1; min-height:44px; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:10px; font-size:15px; }
+  .tabs button { flex:1; min-width:0; padding:0 2px; min-height:44px; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:10px; font-size:15px; }
   .tabs button[aria-selected="true"] { background:var(--ink); color:#fff; border-color:var(--ink); font-weight:600; }
   .chips { display:flex; gap:6px; overflow-x:auto; padding:2px 0 6px; }
   .chips button { flex:0 0 auto; min-height:40px; padding:0 14px; border:1px solid var(--line); background:#fff; border-radius:20px; font-size:14px; color:var(--ink); }
@@ -74,6 +74,15 @@
   .chart .tip { position:absolute; pointer-events:none; background:var(--ink); color:#fff; font-size:12px; padding:4px 8px; border-radius:6px; white-space:nowrap; transform:translate(-50%,-110%); display:none; }
   .kpis { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
   .kpis div { flex:1 1 0; min-width:120px; }
+  .bar.over > span { background:#c25b4a; }
+  .bar .pace { position:relative; }
+  .tgt { padding:10px 0; border-top:1px solid var(--line); }
+  .tgt:first-of-type { border-top:0; }
+  .tgt .head { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .tgt .name { font-weight:600; }
+  .tgt .amt { font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+  .st-over { color:#a3271c; font-weight:600; }
+  .tag.kind { color:var(--accent); }
   .loading { text-align:center; color:var(--sub); padding:40px 0; }
 </style>
 </head>
@@ -85,7 +94,7 @@
   </div>
   <button id="refresh" type="button" hidden>更新</button>
 </header>
-<nav class="tabs" id="tabs" hidden role="tablist"><button type="button" role="tab" data-tab="sum" aria-selected="true">概要</button><button type="button" role="tab" data-tab="rev" aria-selected="false">売上</button><button type="button" role="tab" data-tab="ses" aria-selected="false">回数</button><button type="button" role="tab" data-tab="mem" aria-selected="false">会員</button></nav>
+<nav class="tabs" id="tabs" hidden role="tablist"><button type="button" role="tab" data-tab="sum" aria-selected="true">概要</button><button type="button" role="tab" data-tab="rev" aria-selected="false">売上</button><button type="button" role="tab" data-tab="ses" aria-selected="false">回数</button><button type="button" role="tab" data-tab="mem" aria-selected="false">会員</button><button type="button" role="tab" data-tab="cost" aria-selected="false">コスト</button></nav>
 <main id="main"><div class="loading">読み込み中…</div></main>
 
 <script>
@@ -94,14 +103,14 @@
   var busy = false;
   var btn = document.getElementById('refresh');
 
-  function yen(v) { return typeof v === 'number' ? '¥' + v.toLocaleString('ja-JP') : null; }
+  function yen(v) { return typeof v === 'number' ? (v < 0 ? '−¥' + (-v).toLocaleString('ja-JP') : '¥' + v.toLocaleString('ja-JP')) : null; }
   function num(v, unit) { return typeof v === 'number' ? v.toLocaleString('ja-JP') + unit : null; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]; }); }
   function val(x, f) { var t = f(x.value); return t === null ? '<span class="na">未取得</span>' : esc(t); }
   function monthJa(ym) { return Number(ym.slice(5, 7)) + '月'; }
   function fcTag(x) { return x && x.state === '予測' ? '<span class="tag fc">予測</span>' : ''; }
 
-  var tab = 'sum', lastData = null, revMonth = null, sesMonth = null;
+  var tab = 'sum', lastData = null, revMonth = null, sesMonth = null, costMonth = null;
   function setTab(t) { tab = t; Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.setAttribute('aria-selected', b.getAttribute('data-tab') === t ? 'true' : 'false'); }); render(lastData); window.scrollTo(0, 0); }
   Array.prototype.forEach.call(document.querySelectorAll('#tabs button'), function (b) { b.addEventListener('click', function () { setTab(b.getAttribute('data-tab')); }); });
   function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(1) + '%' : null; }
@@ -121,6 +130,7 @@
       h += '<div class="msg err">前回の更新で読めなかったデータがあります：' + esc(d.lastLog.message) + '</div>';
     }
     if (tab === 'rev') h += renderRevenue(d);
+    else if (tab === 'cost') h += renderCost(d);
     else if (tab === 'mem') h += renderMembers(d);
     else if (tab === 'ses') h += renderSessions(d);
     else h += renderSummary(d);
@@ -133,6 +143,8 @@
     if (tab === 'ses') bindChart(d, 'schart', 'stip', function (i) { var t = (d.sessionTrend || [])[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.total === 'number' ? t.total + '回（実施 ' + t.done + '・予定 ' + t.plan + '）' : '未取得'); });
     if (tab === 'ses') bindChart(d, 'gchart', 'gtip', function (i) { var x = (d.gymTrend || [])[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.gym === 'number' ? yen(x.gym) + (x.state === '予測' ? '（予測）' : '') : '未取得'); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-smonth]'), function (b) { b.addEventListener('click', function () { sesMonth = b.getAttribute('data-smonth'); render(lastData); }); });
+    if (tab === 'cost') bindChart(d, 'cchart', 'ctip', function (i) { var x = costRows(d)[i]; return Number(x.month.slice(5, 7)) + '月：' + (typeof x.all === 'number' ? '合計 ' + yen(x.all) + '（経営 ' + yen(x.biz) + '・生活 ' + yen(x.life) + '）' : '未取得'); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cmonth]'), function (b) { b.addEventListener('click', function () { costMonth = b.getAttribute('data-cmonth'); render(lastData); }); });
     Array.prototype.forEach.call(document.querySelectorAll('[data-month]'), function (b) { b.addEventListener('click', function () { revMonth = b.getAttribute('data-month'); render(lastData); }); });
   }
 
@@ -249,10 +261,10 @@
       '<div class="note">薄い棒（点線の枠）は予測。棒をタップすると内訳が出ます。</div>';
     h += '<ul class="list">' + gt.map(function (x) {
       return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) +
-        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + '</span></span>' +
+        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − 原価 ' + (typeof x.cost === 'number' ? esc(yen(x.cost)) : '未取得') + '</span></span>' +
         '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + '<span class="sub" style="text-align:right">' + (typeof x.rate === 'number' ? '粗利率 ' + x.rate.toFixed(1) + '%' : '') + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
     }).join('') + '</ul>';
-    h += '<div class="note">粗利＝売上 − レンタルジム代（経理部の料金表PL「売上総利益」）。予測は今の会員がそのまま続く前提の見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。広告費などの経費は引いていません。</div></section>';
+    h += '<div class="note">粗利＝売上 − 原価（レンタルジム代＋PTの日の交通費。経理部の料金表「粗利_月次」）。予測は今の会員がそのまま続く前提の見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。広告費などの経費は引いていません。</div></section>';
     return h;
   }
 
@@ -350,6 +362,118 @@
       }).join('') + '</ul>';
       h += '<div class="note">1回あたり＝その月のレンタルジム代（料金表PL）÷ カレンダーのセッション回数。今月は予定も含めた回数で割り、ジム代は経理部の見込み（予測）。カレンダーに入っていないセッションがある月は高めに出ます。</div></section>';
     }
+    return h;
+  }
+
+  // ---- コスト管理（2026-11-18） ----
+  // 月ごとの経営コスト（実績のみ）と生活コストを合わせた行（直近6か月）
+  function costRows(d) {
+    var c = d.cost || {}, biz = (c.business && c.business.months) || [], life = (c.life && c.life.months) || [];
+    var months = biz.filter(function (m) { return m.kind === '実績'; }).map(function (m) { return m.month; })
+      .concat(life.map(function (m) { return m.month; })).filter(function (m, i, a) { return a.indexOf(m) === i && m <= d.current; }).sort().slice(-6);
+    return months.map(function (m) {
+      var b = biz.filter(function (x) { return x.month === m && x.kind === '実績'; })[0], l = life.filter(function (x) { return x.month === m; })[0];
+      var bv = b && typeof b.total === 'number' ? b.total : null, lv = l ? l.total : null;
+      return { month: m, biz: bv, life: lv, all: bv !== null && lv !== null ? bv + lv : null, op: b && typeof b.op === 'number' ? b.op : null, lifeEst: l ? l.estimated : false };
+    });
+  }
+  function renderCost(d) {
+    var c = d.cost;
+    if (!c) return '<section class="card"><div class="label">コスト管理</div><span class="na">未取得</span><div class="note">「更新」を押すと表示されます。</div></section>';
+    var h = '', cur = d.current;
+    // 1. 重要削減コスト
+    h += '<section class="card"><div class="label">重要削減コスト（' + monthJa(cur) + '・月の上限に対して）</div>';
+    if (c.lifeStatus === 'not_configured') h += '<div class="note">経理部の「Sunpeace_家計管理」の準備ができると、ここに表示されます。</div>';
+    else if (!c.targets) h += '<span class="na">未取得</span><div class="note">家計管理シートを読めませんでした。</div>';
+    else {
+      var now = new Date(), days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(), pace = Math.round(now.getDate() / days * 100);
+      c.targets.forEach(function (t) {
+        var sp = typeof t.spent === 'number' ? t.spent : null, lim = typeof t.limit === 'number' ? t.limit : null;
+        h += '<div class="tgt"><div class="head"><span class="name">' + esc(t.name) + '<span class="tag kind">' + esc(t.kind || '') + '</span></span><span class="amt">' + (sp !== null ? esc(yen(sp)) : '<span class="na">未取得</span>') + '</span></div>';
+        if (lim === null) h += '<div class="note">目標：' + esc(t.limitText || '未設定') + '</div>';
+        else {
+          var p = lim > 0 && sp !== null ? Math.min(100, Math.round(sp / lim * 100)) : (sp > 0 ? 100 : 0), over = sp !== null && sp > lim;
+          h += '<div class="bar' + (over ? ' over' : '') + '" role="img" aria-label="上限の' + p + '%"><span style="width:' + p + '%"></span></div>' +
+            '<div class="row"><div class="col note" style="margin-top:0">上限 ' + esc(yen(lim)) + (/^\d{4}-\d{2}$/.test(t.start || '') && t.start > cur ? '（' + esc(monthJa(t.start)) + 'から）' : '') + '</div><div class="note" style="margin-top:0">' +
+            (sp === null ? '' : over ? '<span class="st-over">' + esc(yen(sp - lim)) + ' オーバー</span>' : 'あと ' + esc(yen(lim - sp))) + '</div></div>';
+        }
+        var notes = [];
+        if (t.updated) notes.push(esc(t.updated.slice(5).replace('-', '/')) + ' 時点');
+        if (t.memo) notes.push(esc(t.memo));
+        var prev = (t.history || []).filter(function (x) { return x.month < cur; }).slice(-1)[0];
+        if (prev) notes.push('先月 ' + esc(yen(prev.amount)));
+        if (notes.length) h += '<div class="note">' + notes.join('／') + '</div>';
+        h += '</div>';
+      });
+      h += '<div class="note">今月は' + now.getDate() + '日まで（月の' + pace + '%）。使った金額は経理部が週1回更新します。</div>';
+    }
+    h += '</section>';
+
+    // 2. 月の全体像（月を選ぶ）
+    var rows = costRows(d), biz = c.business, life = c.life;
+    var months = rows.map(function (r) { return r.month; });
+    if (!costMonth || months.indexOf(costMonth) < 0) { var both = rows.filter(function (r) { return r.all !== null; }); costMonth = (both.length ? both[both.length - 1] : rows[rows.length - 1] || {}).month; }
+    var sel = rows.filter(function (r) { return r.month === costMonth; })[0] || {};
+    h += '<section class="card"><div class="label">コストの全体像（月を選ぶ）</div>';
+    if (months.length) h += '<div class="chips" role="group" aria-label="月を選ぶ">' + months.map(function (m) { return '<button type="button" data-cmonth="' + m + '" aria-pressed="' + (m === costMonth) + '">' + Number(m.slice(5, 7)) + '月</button>'; }).join('') + '</div>';
+    var cell = function (v) { return typeof v === 'number' ? esc(yen(v)) : '<span class="na">未取得</span>'; };
+    h += '<div class="row"><div class="col"><div class="label">経営コスト</div><div class="mid">' + cell(sel.biz) + '</div></div>' +
+      '<div class="col"><div class="label">生活コスト' + (sel.lifeEst ? '<span class="tag fc">推定を含む</span>' : '') + '</div><div class="mid">' + cell(sel.life) + '</div></div></div>' +
+      '<div class="total" style="margin-top:10px"><span>合計</span><span>' + cell(sel.all) + '</span></div>';
+    if (typeof sel.op === 'number' && typeof sel.life === 'number') {
+      var bal = sel.op - sel.life;
+      h += '<div class="row" style="margin-top:8px"><div class="col note" style="margin-top:0">事業の営業利益 ' + esc(yen(sel.op)) + ' − 生活コスト</div><div><b class="' + (bal < 0 ? 'st-over' : 'st-ok') + '">' + esc(yen(bal)) + '</b></div></div>' +
+        '<div class="note">この差が月の収支の目安（マイナスなら資産が減る方向）。</div>';
+    }
+    if (rows.some(function (r) { return r.all !== null; })) h += '<div class="label" style="margin-top:12px">月ごとのコスト合計（経営＋生活）</div><div class="chart" id="cchart">' +
+      chartSvg(rows.map(function (r) { return { month: r.month, value: r.all, state: '' }; }), costMonth, '月ごとのコスト合計') + '<div class="tip" id="ctip"></div></div><div class="note">棒をタップすると内訳が出ます。点線は未取得の月。</div>';
+    h += '</section>';
+
+    // 3. 経営コストの内訳
+    h += '<section class="card"><div class="label">経営コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '・料金表「経費」）</div>';
+    if (!biz) h += '<span class="na">未取得</span>';
+    else if (biz.actualMonths.indexOf(costMonth) < 0) h += '<div class="note">この月はまだ締まっていません（毎月10日ごろの月次経理で入ります）。</div>';
+    else {
+      var items = biz.cats.map(function (k) { return { name: k.name, section: k.section, v: k.values[costMonth] }; }).filter(function (x) { return typeof x.v === 'number' && x.v !== 0; }).sort(function (a, b) { return b.v - a.v; });
+      h += '<ul class="list">' + items.map(function (x) { return '<li><span>' + esc(x.name) + '<span class="sub">' + esc(x.section) + '</span></span><span class="amt">' + esc(yen(x.v)) + '</span></li>'; }).join('') + '</ul>' +
+        '<div class="total"><span>合計</span><span>' + esc(yen(items.reduce(function (s2, x) { return s2 + x.v; }, 0))) + '</span></div>';
+    }
+    if (biz) {
+      var fc = biz.months.filter(function (m) { return m.month >= cur && typeof m.total === 'number'; }).slice(0, 4);
+      if (fc.length) h += '<div class="label" style="margin-top:12px">これからの見込み（粗利_月次）</div><ul class="list">' + fc.map(function (m) {
+        return '<li><span>' + monthJa(m.month) + (m.kind === '予測' ? '<span class="tag fc">予測</span>' : '') + '<span class="sub">原価 ' + cell(m.cogs) + '・営業利益 ' + cell(m.op) + '</span></span><span class="amt">' + esc(yen(m.total)) + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    h += '<div class="note">経営コスト＝売上原価（レンタルジム代・PTの日の交通費）＋販管費。実績は経理部の帳簿から、見込みは料金表の予測。</div></section>';
+
+    // 4. 生活コストの内訳
+    h += '<section class="card"><div class="label">生活コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '・家計管理）</div>';
+    if (c.lifeStatus === 'not_configured') h += '<div class="note">経理部の「Sunpeace_家計管理」の準備ができると表示されます。</div>';
+    else if (!life) h += '<span class="na">未取得</span>';
+    else {
+      var lm = life.months.filter(function (m) { return m.month === costMonth; })[0];
+      if (!lm) h += '<div class="note">この月の家計の記録はまだありません。</div>';
+      else h += '<ul class="list">' + lm.cats.map(function (x) { return '<li><span>' + esc(x.name) + (x.estimated ? '<span class="tag fc">推定</span>' : '') + '</span><span class="amt">' + esc(yen(x.amount)) + '</span></li>'; }).join('') + '</ul>' +
+        '<div class="total"><span>合計</span><span>' + esc(yen(lm.total)) + '</span></div>';
+    }
+    h += '</section>';
+
+    // 5. 資産
+    h += '<section class="card"><div class="label">資産（月末）</div>';
+    var as = c.assets || [];
+    if (c.lifeStatus === 'not_configured') h += '<div class="note">経理部の「Sunpeace_家計管理」の準備ができると表示されます。</div>';
+    else if (!as.length) h += '<span class="na">未取得</span>';
+    else {
+      var last = as[as.length - 1], goal = c.assetGoal, gp = goal && typeof last.total === 'number' ? Math.min(100, Math.round(last.total / goal * 100)) : 0;
+      h += '<div class="label">' + esc(last.month.slice(0, 4)) + '年' + monthJa(last.month) + '末の資産総額</div><div class="big">' + cell(last.total) + '</div>' +
+        '<div class="note">暮らせる月数：' + (typeof last.months === 'number' ? '<b>' + last.months.toFixed(1) + 'か月</b>' : '<span class="na">未取得</span>') + '</div>';
+      if (goal) h += '<div class="goal"><div class="row"><div class="col">目標 ' + esc(yen(goal)) + '</div><div><b>' + (typeof last.total === 'number' ? (last.total >= goal ? '達成' : 'あと' + esc(yen(goal - last.total))) : '') + '</b></div></div><div class="bar" role="img" aria-label="' + gp + '%"><span style="width:' + gp + '%"></span></div></div>';
+      var prevA = as.length > 1 ? as[as.length - 2] : null;
+      if (prevA && typeof prevA.total === 'number' && typeof last.total === 'number') { var df = last.total - prevA.total; h += '<div class="note">前の月から ' + (df >= 0 ? '+' : '−') + esc(yen(Math.abs(df))) + '</div>'; }
+      h += '<ul class="list" style="margin-top:8px">' + [['現金', last.cash], ['証券', last.stock], ['確定拠出年金', last.dc], ['カード利用残高', last.card], ['生活費（月）', last.living]].filter(function (x) { return typeof x[1] === 'number'; })
+        .map(function (x) { return '<li><span>' + x[0] + '</span><span class="amt">' + esc(yen(x[1])) + '</span></li>'; }).join('') + '</ul>';
+    }
+    h += '<div class="note">出どころ：経理部の「Sunpeace_家計管理」（社長だけが見られるファイル。読むだけ）。家計の数字はKINDOU月報用の「数字」シートには入れていません。</div></section>';
     return h;
   }
 
