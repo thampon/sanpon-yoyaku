@@ -175,7 +175,7 @@
     h += '<div class="note">出どころ：料金表_パーソナルのPL「売上高」（経理部）</div></section>';
 
     // 推移グラフ
-    h += '<section class="card"><div class="label">月ごとの売上（直近6か月）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
+    h += '<section class="card"><div class="label">月ごとの売上（1年間）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
       '<div class="note">棒をタップすると金額が出ます。薄い棒は予測、点線は未取得の月。</div></section>';
 
     // 会員
@@ -318,7 +318,7 @@
       '<div class="col"><div class="label">' + esc(d.current.slice(0, 4)) + '年の粗利の見込み</div><div class="mid">' + val(d.grossYear || {}, yen) + fcTag(d.grossYear) + '</div>' +
       '<div class="note">うち今月までの累計 ' + val(d.grossYtd || {}, yen) + '</div></div></div>' +
       goalRow(d, cur) + closeRow(cur) +
-      '<div class="label" style="margin-top:12px">月ごとの売上と粗利（直近6か月＋3か月先）</div>' +
+      '<div class="label" style="margin-top:12px">月ごとの売上と粗利（1年間・3か月先まで）</div>' +
       '<div class="legend"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率（右の目盛り）</span>' + (d.grossGoal ? '<span><i class="gl"></i>粗利の目標</span>' : '') + '</div>' +
       '<div class="chart" id="pchart">' + grossComboSvg(gt, d.current, d.grossGoal) + '<div class="tip" id="ptip"></div></div>' +
       '<div class="note">薄い棒（点線の枠）と点線の折れ線は予測。棒をタップすると内訳が出ます。</div>';
@@ -430,7 +430,7 @@
   }
 
   // ---- コスト管理（2026-11-18） ----
-  // 月ごとの経営コスト（実績のみ）と生活コストを合わせた行（直近6か月）
+  // 月ごとの経営コスト（実績のみ）と生活コストを合わせた行（最大1年）
   function costRows(d) {
     var c = d.cost || {}, biz = (c.business && c.business.months) || [], life = (c.life && c.life.months) || [];
     var months = biz.filter(function (m) { return m.kind === '実績'; }).map(function (m) { return m.month; })
