@@ -260,11 +260,18 @@
 .bkt tr.bk-act td { padding-top:0; text-align:right; border-top:none; }
   .bkt tr:has(+ tr.bk-act) td { border-bottom:none; padding-bottom:4px; }
   .bkt .bk-place td { padding-top:0; text-align:left; }
-  .pl-row { display:flex; align-items:flex-start; gap:8px; margin:4px 0; font-size:12px; line-height:1.6; }
+  .pl-row { display:flex; align-items:center; gap:8px; margin:2px 0; font-size:12px; line-height:1.6; }
+  .pl-addr .pl-v.full { white-space:normal; }
+  .pl-addr .pl-v { flex:1 1 0; width:0; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-.02em; }
+  .pl-ent { flex-wrap:wrap; min-height:34px; }
+  .pl-w { flex:0 1 auto; color:#6B7A80; }
+  .bk-acts { margin-left:auto; display:inline-flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+  .bk-acts.open { flex-basis:100%; }
+  .bk-acts .bk-note { width:100%; }
   .pl-k { flex:none; padding:0 6px; border-radius:5px; background:#E9F2EE; color:#345D4D; font-size:11px; font-weight:700; line-height:1.8; }
   .pl-v { flex:1; min-width:0; overflow-wrap:anywhere; }
   .pl-wait .pl-v { color:#6B7A80; }
-  .pl-map { flex:none; display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border:1px solid #9FB7AE; border-radius:8px; color:#24453A; font-size:12px; font-weight:700; text-decoration:none; background:#fff; }
+  .pl-map { flex:none; display:inline-flex; align-items:center; min-height:30px; padding:0 10px; border:1px solid #9FB7AE; border-radius:8px; color:#24453A; font-size:12px; font-weight:700; text-decoration:none; background:#fff; }
   .bk-x { display:inline-block; margin:0 0 0 auto; min-height:32px; padding:4px 10px; border:1px solid #D9C9A3; border-radius:8px; background:#fff; color:#806025; font-size:11px; font-weight:700; white-space:nowrap; cursor:pointer; }
   .bk-x.sure { background:#B4532A; border-color:#B4532A; color:#fff; }
   .bk-x:disabled { opacity:.6; cursor:default; }
@@ -370,6 +377,11 @@
     }
   }
 
+  // 予約ページで見せる住所：郵便番号と都道府県を省いて短く（地図の検索には元の住所を使う）
+  function shortAddr(a) {
+    return String(a || '').replace(/^〒?\s*\d{3}-?\d{4}\s*/, '').replace(/^(東京都|北海道|大阪府|京都府|.{2,3}県)/, '').trim();
+  }
+
   function render() {
     const v = view;
     let h = '';
@@ -387,22 +399,24 @@
         const done = b.status === '済', ok = b.status === '確定';
         h += '<tr' + (done ? ' class="past"' : '') + '><td class="d">' + esc(b.date) + ' <span class="t">' + esc(String(b.time).split('〜')[0]) + '〜</span></td><td class="g">' + esc(b.gym) + '</td>' +
           '<td><span class="pill ' + (done ? 'done' : ok ? 'ok' : 'wait') + '">' + (done ? '済' : ok ? '確定' : b.changeFrom ? '変更先' : '承認待ち') + '</span></td></tr>';
-        // 確定した予約は、住所（地図ボタン）と入室方法を下の行に出す。入室方法は前日18時から表示
-        if (ok && (b.address || b.entry || b.entryFrom)) {
-          h += '<tr class="bk-place"><td colspan="3">' +
-            (b.address ? '<div class="pl-row"><span class="pl-k">住所</span><span class="pl-v">' + esc(b.address) + '</span>' +
-              '<a class="pl-map" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(b.address) + '" target="_blank" rel="noopener">地図</a></div>' : '') +
-            (b.entry ? '<div class="pl-row"><span class="pl-k">入室</span><span class="pl-v">' + esc(b.entry) + '</span></div>'
-              : b.entryFrom ? '<div class="pl-row pl-wait"><span class="pl-k">入室</span><span class="pl-v">' + esc(b.entryFrom) + 'から表示されます</span></div>' : '') +
-            '</td></tr>';
-        }
         // 取り消し・申請のボタンは、日付やジム名を狭くしないよう下の行に出す
         const act = (b.changeFrom ? '<span class="bk-rq">' + esc(b.changeFrom) + ' からの変更（承認待ち）</span> ' : '') +
           (!done && !ok && b.id ? '<button type="button" class="bk-x" data-cx="' + esc(b.id) + '">取り消す</button>' : '') +
           (ok && b.changeTo ? '<span class="bk-rq">' + esc(b.changeTo) + ' に変更を申請中</span>' : '') +
           (ok && b.id && !b.requested && !b.changeTo ? '<button type="button" class="bk-x" data-rq="' + esc(b.id) + '" data-lbl="' + esc(b.date + ' ' + String(b.time).split('〜')[0] + '〜') + '" data-gymname="' + esc(b.gym) + '">キャンセル・変更</button>' : '') +
           (ok && b.requested ? '<span class="bk-rq">キャンセルを申請済み（連絡をお待ちください）</span>' : '');
-        if (act) h += '<tr class="bk-act"><td colspan="3">' + act + '</td></tr>';
+        // 確定した予約は、住所（押すと地図）と入室方法を下に出す。入室方法は前日18時から表示
+        // 縦に場所を取らないよう、住所は1行（都道府県・郵便番号は省く）、ボタンは入室の行の右に置く
+        const acts = act ? '<span class="bk-acts">' + act + '</span>' : '';
+        if (ok && (b.address || b.entry || b.entryFrom)) {
+          const ent = b.entry ? '<span class="pl-k">入室</span><span class="pl-v">' + esc(b.entry) + '</span>'
+            : b.entryFrom ? '<span class="pl-k">入室</span><span class="pl-v pl-w">' + esc(String(b.entryFrom).replace(/（.）\s*/, ' ')) + 'から表示</span>' : '';
+          h += '<tr class="bk-place"><td colspan="3">' +
+            (b.address ? '<div class="pl-row pl-addr"><span class="pl-k">住所</span><span class="pl-v" title="' + esc(b.address) + '">' + esc(shortAddr(b.address)) + '</span>' +
+              '<a class="pl-map" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(b.address) + '" target="_blank" rel="noopener">地図</a></div>' : '') +
+            ((ent || acts) ? '<div class="pl-row pl-ent">' + ent + acts + '</div>' : '') +
+            '</td></tr>';
+        } else if (act) h += '<tr class="bk-act"><td colspan="3">' + acts + '</td></tr>';
       });
       h += '</tbody></table>';
     }
@@ -450,9 +464,13 @@
       }
     }));
 
+    // 住所は1行で省略表示。押すと全文を表示（もう一度押すと戻る）
+    document.querySelectorAll('.pl-addr .pl-v').forEach((el) => el.addEventListener('click', () => el.classList.toggle('full')));
+
     // 確定後：「日時を変更する」（予約画面で変更先を選ぶ）か「キャンセルする」（ひとこと付きで申請）
     document.querySelectorAll('[data-rq]').forEach((el) => el.addEventListener('click', () => {
-      const td = el.closest('td'), id = el.getAttribute('data-rq'), lbl = el.getAttribute('data-lbl'), gname = el.getAttribute('data-gymname');
+      const td = el.closest('.bk-acts') || el.closest('td'), id = el.getAttribute('data-rq'), lbl = el.getAttribute('data-lbl'), gname = el.getAttribute('data-gymname');
+      td.classList.add('open');
       td.innerHTML = '<button type="button" class="bk-x" data-chg>日時を変更する</button> <button type="button" class="bk-x" data-cxl>キャンセルする</button>';
       td.querySelector('[data-chg]').addEventListener('click', () => {
         changing = { id, label: lbl, gym: gname };
