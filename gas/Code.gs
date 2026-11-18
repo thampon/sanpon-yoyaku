@@ -512,7 +512,7 @@ function apiSlots(token, gymId) {
     const c = requireCustomer_(token);
     const gym = gymById_(getGyms_(), gymId);
     if (!gym || !gym.active || c.gymIds.indexOf(gym.id) < 0) fail_('このジムは選択できません。');
-    return forLength_(cutUntil_(getSlotsCached_([gym.id])[gym.id] || [], c.until), lenOf_(c, getSettings_()), getSettings_());
+    return cutStep_(forLength_(cutUntil_(getSlotsCached_([gym.id])[gym.id] || [], c.until), lenOf_(c, getSettings_()), getSettings_()), stepOf_(c, gym));
   });
 }
 
@@ -520,11 +520,12 @@ function apiSlots(token, gymId) {
 function apiSlotsAll(token) {
   return guard_(function () {
     const c = requireCustomer_(token);
-    const ids = getGyms_().filter(function (g) { return g.active && c.gymIds.indexOf(g.id) >= 0; })
+    const gyms = getGyms_();
+    const ids = gyms.filter(function (g) { return g.active && c.gymIds.indexOf(g.id) >= 0; })
       .map(function (g) { return g.id; });
     const all = getSlotsCached_(ids);
     const st = getSettings_();
-    Object.keys(all).forEach(function (k) { all[k] = forLength_(cutUntil_(all[k], c.until), lenOf_(c, st), st); });
+    Object.keys(all).forEach(function (k) { all[k] = cutStep_(forLength_(cutUntil_(all[k], c.until), lenOf_(c, st), st), stepOf_(c, gymById_(gyms, k))); });
     return all;
   });
 }
@@ -651,6 +652,7 @@ function checkSlotFree_(c, gym, s, st, gyms) {
   const to = new Date(Math.min(range.to.getTime(), dayTo.getTime()));
   if (from > to) fail_('この日時は受付期間外です。');
   if (c.until && s.getTime() > c.until.getTime()) fail_(fmtDay_(c.until) + 'より後の日時は予約できません。');
+  if (!onStep_(s.getTime(), stepOf_(c, gym))) fail_('この場所は' + stepOf_(c, gym) + '分単位の開始時刻だけ予約できます。別の時刻をお選びください。');
   const busy = loadBusy_(getCal_(st), from, to, st, gyms).concat(loadGymCal_(gym, from, to));
   const days = buildSlots_(gym.id, st, busy, travelFn_(st), getHours_(), from, to);
   const ok = forLength_(days, len, st).some(function (d) {
@@ -731,6 +733,7 @@ function apiRequest(token, gymId, startIso) {
       const to = new Date(Math.min(range.to.getTime(), dayTo.getTime()));
       if (from > to) fail_('この日時は受付期間外です。');
       if (c.until && s.getTime() > c.until.getTime()) fail_(fmtDay_(c.until) + 'より後の日時は予約できません。');
+      if (!onStep_(s.getTime(), stepOf_(c, gym))) fail_('この場所は' + stepOf_(c, gym) + '分単位の開始時刻だけ予約できます。別の時刻をお選びください。');
       const busy = loadBusy_(getCal_(st), from, to, st, gyms).concat(loadGymCal_(gym, from, to));
       const days = buildSlots_(gym.id, st, busy, travelFn_(st), getHours_(), from, to);
       const ok = forLength_(days, len, st).some(function (d) {
@@ -1469,7 +1472,7 @@ function getCal_(st) {
 
 function getGyms_() {
   return readRows_(SH.GYMS).filter(function (r) { return r['ジムID']; }).map(function (r) {
-    return { id: r['ジムID'], name: r['名称'], address: r['住所'], keywords: splitList_(r['判定キーワード']), active: isTrue_(r['有効']), checkCal: r['空き確認カレンダーID'] || '', group: String(r['まとめボタン'] || '').trim(), entry: String(r['入室方法'] || '').trim() };
+    return { id: r['ジムID'], name: r['名称'], address: r['住所'], keywords: splitList_(r['判定キーワード']), active: isTrue_(r['有効']), checkCal: r['空き確認カレンダーID'] || '', group: String(r['まとめボタン'] || '').trim(), entry: String(r['入室方法'] || '').trim(), step: num_(r['刻み（分）'], 0) };
   });
 }
 function gymById_(gyms, id) { return gyms.filter(function (g) { return g.id === id; })[0] || null; }
@@ -1481,11 +1484,24 @@ function toCustomer_(r) {
     remaining: num_(r['残回数'], 0), active: isTrue_(r['有効']), _row: r._row,
     until: untilOf_(r['予約期限']),
     prefer: String(r['優先ジム'] || '').trim(),
-    sessionMin: num_(r['セッション分'], 0)
+    sessionMin: num_(r['セッション分'], 0),
+    step: num_(r['刻み（分）'], 0)
   };
 }
 /** その顧客の1回の長さ（分）。顧客シート「セッション分」が空なら設定シートの SESSION_MIN */
 function lenOf_(c, st) { return c.sessionMin > st.sessionMin ? c.sessionMin : st.sessionMin; }
+/**
+ * 開始時刻の刻み（2026-11-18 さんぽん指示）。ジム側の予約が30分単位しか取れない場所（GYMSの登戸など）や、
+ * 15分ずらしを使わないお客さん（菊池さん）は、:15 / :45 開始を出さない。顧客シート・ジムシートの「刻み（分）」の大きい方
+ */
+function stepOf_(c, gym) { return Math.max(15, (c && c.step) || 0, (gym && gym.step) || 0); }
+function onStep_(ms, step) { return step <= 15 || Math.round((ms + 9 * 3600000) / 60000) % step === 0; }
+function cutStep_(days, step) {
+  if (step <= 15) return days;
+  return days.map(function (d) {
+    return { date: d.date, label: d.label, times: d.times.filter(function (t) { return onStep_(new Date(t.start).getTime(), step); }) };
+  }).filter(function (d) { return d.times.length; });
+}
 /** 長いセッション（例：夫婦で120分）用：通常枠（60分）が連続して空いている開始時刻だけ残す */
 function forLength_(days, len, st) {
   const n = Math.ceil(len / st.sessionMin);
