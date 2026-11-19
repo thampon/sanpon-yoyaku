@@ -164,7 +164,7 @@
     var h = '';
     // 売上
     var r = d.revenue;
-    h += '<section class="card"><div class="label">売上（サービスを提供した月で計上）</div><div class="row">' +
+    h += '<section class="card"><div class="row">' +
       '<div class="col"><div class="label">今月（' + monthJa(d.current) + '）' + fcTag(r.cur) + '</div><div class="big">' + val(r.cur, yen) + '</div></div>' +
       '<div class="col"><div class="label">先月（' + monthJa(d.previous) + '）' + fcTag(r.prev) + '</div><div class="mid">' + val(r.prev, yen) + '</div></div></div>';
     h += '<div class="kpis"><div><div class="label">前月比' + fcTag(d.growth) + '</div><div class="mid">' + val(d.growth || {}, pct) + '</div></div>' +
@@ -182,7 +182,7 @@
 
     // 会員
     var m = d.members;
-    h += '<section class="card"><div class="label">会員（請求マスタの有効）</div><div class="big">' + val(m, function (v) { return num(v, '名'); }) + '</div>';
+    h += '<section class="card"><div class="label">会員</div><div class="big">' + val(m, function (v) { return num(v, '名'); }) + '</div>';
     d.goals.forEach(function (g) {
       var target = Number((String(g.label).match(/（(\d+)名）/) || [])[1]);
       var cur = typeof m.value === 'number' ? m.value : null;
@@ -195,7 +195,7 @@
 
     // セッション
     var s = d.sessions;
-    h += '<section class="card"><div class="label">セッション（' + monthJa(d.current) + '・カレンダー）</div><div class="row">' +
+    h += '<section class="card"><div class="label">セッション（' + monthJa(d.current) + '）</div><div class="row">' +
       '<div class="col"><div class="big">' + val(s.cur, function (v) { return num(v, '回'); }) + '</div>' +
       (typeof s.done.value === 'number' ? '<div class="note">実施済 ' + s.done.value + '回 ／ 予定 ' + s.plan.value + '回</div>' : '') + '</div>' +
       '<div class="col"><div class="label">先月</div><div class="mid">' + val(s.prev, function (v) { return num(v, '回'); }) + '</div></div></div>';
@@ -204,7 +204,7 @@
     h += '</section>';
 
     var ret = d.retention || { value: '未取得' };
-    h += '<section class="card"><div class="label">会員の動き（' + monthJa(d.current) + '・料金表）' + fcTag(d.newMembers) + '</div>' +
+    h += '<section class="card"><div class="label">会員の動き（' + monthJa(d.current) + '）' + fcTag(d.newMembers) + '</div>' +
       '<div class="row"><div class="col">新規入会</div><div>' + val(d.newMembers, function (v) { return num(v, '名'); }) + '</div></div>' +
       '<div class="row"><div class="col">退会</div><div>' + val(d.left, function (v) { return num(v, '名'); }) + '</div></div>' +
       '<div class="row"><div class="col">継続率（退会しなかった割合）</div><div>' + val(ret, function (v) { return typeof v === 'number' ? v.toFixed(1) + '%' : null; }) + '</div></div>' +
@@ -342,7 +342,7 @@
       var withRows = months.filter(function (m) { return (det.byMonth[m] || []).length; });
       revMonth = (det.byMonth[d.current] || []).length ? d.current : (withRows[withRows.length - 1] || months[months.length - 1]);
     }
-    var h = renderGross(d) + '<section class="card"><div class="label">売上の内訳（月ごと・お客さんごと）</div><div class="chips" role="group" aria-label="月を選ぶ">' +
+    var h = renderGross(d) + '<section class="card"><div class="label">お客さんごとの売上</div><div class="chips" role="group" aria-label="月を選ぶ">' +
       months.map(function (m) { return '<button type="button" data-month="' + m + '" aria-pressed="' + (m === revMonth) + '">' + esc(m.slice(0, 4)) + '年' + Number(m.slice(5, 7)) + '月' + (kinds[m] === '予測' ? '（予測）' : '') + '</button>'; }).join('') + '</div>';
     var rows = det.byMonth[revMonth] || [];
     if (!rows.length && kinds[revMonth] === '予測') h += '<div class="note">この月はまだ締まっていないので、料金表には見込みの合計だけがあります：<b>' + esc(yen(totals[revMonth])) + '</b>（予測）。お客さんごとの内訳は、経理部の月の締めのあとに出ます。</div>';
@@ -393,7 +393,7 @@
     if (!st.length) return '<section class="card"><div class="label">セッション回数の推移</div><span class="na">未取得</span><div class="note">「更新」を押すと表示されます。</div></section>';
     var cur = d.current, curT = st.filter(function (t) { return t.month === cur; })[0] || {}, prevT = st.filter(function (t) { return t.month === d.previous; })[0] || {};
     var next = st.filter(function (t) { return t.month > cur; })[0];
-    var h = '<section class="card"><div class="label">月ごとのセッション回数（カレンダー）</div><div class="chart" id="schart">' + sessionChartSvg(st, cur) + '<div class="tip" id="stip"></div></div>' +
+    var h = '<section class="card"><div class="label">月ごとのセッション回数</div><div class="chart" id="schart">' + sessionChartSvg(st, cur) + '<div class="tip" id="stip"></div></div>' +
       '</section>';
     var diff = typeof curT.total === 'number' && typeof prevT.total === 'number' ? curT.total - prevT.total : null;
     h += '<section class="card"><div class="row"><div class="col"><div class="label">今月（' + monthJa(cur) + '）</div><div class="big">' + (typeof curT.total === 'number' ? curT.total + '回' : '<span class="na">未取得</span>') + '</div>' +
@@ -505,7 +505,7 @@
     var months = rows.map(function (r) { return r.month; });
     if (!costMonth || months.indexOf(costMonth) < 0) { var both = rows.filter(function (r) { return r.all !== null; }); costMonth = (both.length ? both[both.length - 1] : rows[rows.length - 1] || {}).month; }
     var sel = rows.filter(function (r) { return r.month === costMonth; })[0] || {};
-    h += '<section class="card"><div class="label">コストの全体像（月を選ぶ）</div>';
+    h += '<section class="card"><div class="label">コストの全体像</div>';
     if (months.length) h += '<div class="chips" role="group" aria-label="月を選ぶ">' + months.map(function (m) { return '<button type="button" data-cmonth="' + m + '" aria-pressed="' + (m === costMonth) + '">' + Number(m.slice(5, 7)) + '月</button>'; }).join('') + '</div>';
     var cell = function (v) { return typeof v === 'number' ? esc(yen(v)) : '<span class="na">未取得</span>'; };
     h += '<div class="row"><div class="col"><div class="label">経営コスト</div><div class="mid">' + cell(sel.biz) + '</div></div>' +
@@ -522,7 +522,7 @@
     h += '</section>';
 
     // 3. 経営コストの内訳
-    h += '<section class="card"><div class="label">経営コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '・料金表「経費」）</div>';
+    h += '<section class="card"><div class="label">経営コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '）</div>';
     if (!biz) h += '<span class="na">未取得</span>';
     else if (biz.actualMonths.indexOf(costMonth) < 0) h += '<div class="note">この月はまだ締まっていません（毎月10日ごろの月次経理で入ります）。</div>';
     else {
@@ -539,7 +539,7 @@
     h += '</section>';
 
     // 4. 生活コストの内訳
-    h += '<section class="card"><div class="label">生活コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '・家計管理）</div>';
+    h += '<section class="card"><div class="label">生活コストの内訳（' + (costMonth ? monthJa(costMonth) : '') + '）</div>';
     if (c.lifeStatus === 'not_configured') h += '<div class="note">経理部の「Sunpeace_家計管理」の準備ができると表示されます。</div>';
     else if (!life) h += '<span class="na">未取得</span>';
     else {
@@ -551,7 +551,7 @@
     h += '</section>';
 
     // 5. 資産
-    h += '<section class="card"><div class="label">資産（月末）</div>';
+    h += '<section class="card"><div class="label">資産</div>';
     var as = c.assets || [];
     if (c.lifeStatus === 'not_configured') h += '<div class="note">経理部の「Sunpeace_家計管理」の準備ができると表示されます。</div>';
     else if (!as.length) h += '<span class="na">未取得</span>';
@@ -575,7 +575,7 @@
   function renderMembers(d) {
     var ms = d.detail && d.detail.members;
     if (!ms) return '<section class="card"><div class="label">会員一覧</div><span class="na">未取得</span><div class="note">請求マスタを読めなかったか、まだ更新されていません。「更新」を押してください。</div></section>';
-    var h = '<section class="card"><div class="label">会員一覧（請求マスタの有効）</div><div class="big">' + ms.length + '名</div>';
+    var h = '<section class="card"><div class="label">会員一覧</div><div class="big">' + ms.length + '名</div>';
     if (d.detail.unmatchedSessions) h += '<div class="note">今月のPT予定のうち、名前で誰か分からなかったもの：' + d.detail.unmatchedSessions + '件（回数に入っていません）</div>';
     h += '</section>';
     ms.forEach(function (m) {
