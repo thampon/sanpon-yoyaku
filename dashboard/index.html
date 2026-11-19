@@ -55,6 +55,8 @@
   .list { margin:0; padding:0; list-style:none; }
   .list li { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-top:1px solid var(--line); align-items:baseline; }
   .list li:first-child { border-top:0; }
+  .list.tight li { padding:6px 0; font-size:15px; }
+  .list .rate { font-size:12px; color:var(--sub); font-weight:400; margin-left:8px; display:inline-block; min-width:44px; text-align:right; }
   .list .amt { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
   .list .sub { display:block; font-size:12px; color:var(--sub); }
   .total { display:flex; justify-content:space-between; padding-top:10px; border-top:2px solid var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
@@ -139,7 +141,7 @@
     else if (tab === 'mem') h += renderMembers(d);
     else if (tab === 'ses') h += renderSessions(d);
     else h += renderSummary(d);
-    h += '<div class="src">出どころ：料金表_パーソナル（経理部）／請求ログ／請求マスタ／Googleカレンダー（どれも読むだけ）</div>';
+
     h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
     main.innerHTML = h;
     document.getElementById('logout').addEventListener('click', logout);
@@ -167,16 +169,16 @@
       '<div class="col"><div class="label">先月（' + monthJa(d.previous) + '）' + fcTag(r.prev) + '</div><div class="mid">' + val(r.prev, yen) + '</div></div></div>';
     h += '<div class="kpis"><div><div class="label">前月比' + fcTag(d.growth) + '</div><div class="mid">' + val(d.growth || {}, pct) + '</div></div>' +
       '<div><div class="label">' + esc(d.current.slice(0, 4)) + '年の累計' + fcTag(d.annual) + '</div><div class="mid">' + val(d.annual || {}, yen) + '</div></div></div>';
-    if (d.annual && d.annual.state !== '取得' && d.annual.note) h += '<div class="note">累計：' + esc(d.annual.note) + '</div>';
+
     [['今月', r.unsentCur], ['先月', r.unsentPrev]].forEach(function (u) {
-      if (typeof u[1].value === 'number' && u[1].value > 0) h += '<div class="warn">' + u[0] + '発行で未送付の請求：' + esc(yen(u[1].value)) + '（売上に入れていません）</div>';
+      if (typeof u[1].value === 'number' && u[1].value > 0) h += '<div class="warn">' + u[0] + 'の未送付の請求 ' + esc(yen(u[1].value)) + '</div>';
     });
-    if ([r.cur, r.prev, d.growth, d.annual].some(function (x) { return x && x.state === '予測'; })) h += '<div class="note">「予測」は経理部の料金表の見込み（今の会員がそのまま続く前提）。月の締めが終わると実績に変わります。</div>';
-    h += '<div class="note">出どころ：料金表_パーソナルのPL「売上高」（経理部）</div></section>';
+
+    h += '</section>';
 
     // 推移グラフ
     h += '<section class="card"><div class="label">月ごとの売上（1年間）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
-      '<div class="note">棒をタップすると金額が出ます。薄い棒は予測、点線は未取得の月。</div></section>';
+      '</section>';
 
     // 会員
     var m = d.members;
@@ -189,7 +191,7 @@
         (typeof g.value === 'number' ? (g.value === 0 ? '達成' : 'あと' + g.value + '名') : '<span class="na">未取得</span>') +
         '</b></div></div><div class="bar" role="img" aria-label="' + p + '%"><span style="width:' + p + '%"></span></div></div>';
     });
-    h += '<div class="note">出どころ：請求マスタ（毎朝の記録）</div></section>';
+    h += '</section>';
 
     // セッション
     var s = d.sessions;
@@ -199,7 +201,7 @@
       '<div class="col"><div class="label">先月</div><div class="mid">' + val(s.prev, function (v) { return num(v, '回'); }) + '</div></div></div>';
     var shown = s.places.filter(function (p) { return typeof p.value === 'number' && p.value > 0; });
     if (shown.length) h += '<div class="places">' + shown.map(function (p) { return '<div>' + esc(p.label) + '</div><div>' + p.value + '回</div>'; }).join('') + '</div>';
-    h += '<div class="note">出どころ：Googleカレンダー（予定名に「PT」を含む予定）</div></section>';
+    h += '</section>';
 
     var ret = d.retention || { value: '未取得' };
     h += '<section class="card"><div class="label">会員の動き（' + monthJa(d.current) + '・料金表）' + fcTag(d.newMembers) + '</div>' +
@@ -207,7 +209,7 @@
       '<div class="row"><div class="col">退会</div><div>' + val(d.left, function (v) { return num(v, '名'); }) + '</div></div>' +
       '<div class="row"><div class="col">継続率（退会しなかった割合）</div><div>' + val(ret, function (v) { return typeof v === 'number' ? v.toFixed(1) + '%' : null; }) + '</div></div>' +
       '<div class="row"><div class="col">体験からの申込率</div><div>' + val(d.trialRate, function (v) { return num(v, '%'); }) + '</div></div>' +
-      (d.newMembers && d.newMembers.state === '予測' ? '<div class="note">今月は料金表の見込み（会員台帳の入会月・退会月から計算）</div>' : '') + '</section>';
+      '</section>';
     return h;
   }
 
@@ -232,7 +234,7 @@
       } else {
         var yy = y(Math.max(0, v)), hgt = Math.max(2, y(0) - yy), r = Math.min(4, hgt / 2);
         g += '<path d="M' + x + ',' + y(0) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + y(0) + 'Z" fill="' + (v < 0 ? '#c25b4a' : fc[i] ? '#c4dbd3' : (hl ? '#1f6f5c' : '#7fae9f')) + '"' + (fc[i] ? ' stroke="#1f6f5c" stroke-width="1" stroke-dasharray="3 2"' : '') + '/>';
-        if (hl || v < 0) g += '<text x="' + cx + '" y="' + (yy - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + (v / 10000).toFixed(1) + '万' + (fc[i] ? '（予測）' : '') + '</text>';
+        if (hl || v < 0) g += '<text x="' + cx + '" y="' + (yy - 6) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#1f2328">' + (v / 10000).toFixed(1) + '万</text>';
       }
       g += '<text x="' + cx + '" y="' + (H - 8) + '" text-anchor="middle" font-size="11" fill="#6b6f76">' + Number(t.month.slice(5, 7)) + '月</text>';
       g += '<rect class="hit" data-i="' + i + '" x="' + (L + slot * i) + '" y="0" width="' + slot + '" height="' + H + '" fill="transparent"/>';
@@ -303,9 +305,7 @@
   // 締め前の月：原価の見込みと、今わかっている原価（粗利_月次のM列）を並べる
   function closeRow(cur) {
     if (cur.state !== '予測' || typeof cur.cost !== 'number') return '';
-    return '<div class="note" style="margin-top:8px">今月はまだ締め前です。原価の見込み ' + esc(yen(cur.cost)) +
-      (typeof cur.gym === 'number' && typeof cur.travel === 'number' ? '（ジム代 ' + esc(yen(cur.gym)) + '＋交通費 ' + esc(yen(cur.travel)) + '）' : '') +
-      ' ／ 今わかっている原価 ' + (typeof cur.known === 'number' ? esc(yen(cur.known)) : '未取得') + '</div>';
+    return '<div class="note" style="margin-top:8px">原価 見込み ' + esc(yen(cur.cost)) + '／確定分 ' + (typeof cur.known === 'number' ? esc(yen(cur.known)) : '未取得') + '</div>';
   }
 
   function renderGross(d) {
@@ -321,14 +321,14 @@
       '<div class="label" style="margin-top:12px">月ごとの売上と粗利（1年間・3か月先まで）</div>' +
       '<div class="legend"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率（右の目盛り）</span>' + (d.grossGoal ? '<span><i class="gl"></i>粗利の目標</span>' : '') + '</div>' +
       '<div class="chart" id="pchart">' + grossComboSvg(gt, d.current, d.grossGoal) + '<div class="tip" id="ptip"></div></div>' +
-      '<div class="note">薄い棒（点線の枠）と点線の折れ線は予測。棒をタップすると内訳が出ます。</div>';
-    h += '<ul class="list">' + gt.map(function (x) {
-      return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) +
-        '<span class="sub">売上 ' + (typeof x.sales === 'number' ? esc(yen(x.sales)) : '未取得') + ' − 原価 ' + (typeof x.cost === 'number' ? esc(yen(x.cost)) : '未取得') + '</span>' +
-        (x.state === '予測' && typeof x.known === 'number' && x.known > 0 ? '<span class="sub">今わかっている原価 ' + esc(yen(x.known)) + '（締め前）</span>' : '') + '</span>' +
-        '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + '<span class="sub" style="text-align:right">' + (typeof x.rate === 'number' ? '粗利率 ' + x.rate.toFixed(1) + '%' : '') + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
+      '';
+    h += '<ul class="list tight">' + gt.map(function (x) {
+      return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) + '</span>' +
+        '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + (typeof x.rate === 'number' ? '<span class="rate">' + x.rate.toFixed(1) + '%</span>' : '') : '<span class="na">未取得</span>') + '</span></li>';
+
+
     }).join('') + '</ul>';
-    h += '<div class="note">粗利＝売上 − 原価（レンタルジム代＋PTの日の交通費。経理部の料金表「粗利_月次」）。予測は経理部の会員計画（新規 毎月2人など）にもとづく見込みで、月の締め（毎月10日ごろ）のあとに実績に変わります。交通費が原価に入っているのは2026年8月27日からで、それより前の月の粗利率は少し高めに出ます。広告費などの経費は引いていません。</div></section>';
+    h += '</section>';
     return h;
   }
 
@@ -348,14 +348,14 @@
     if (!rows.length && kinds[revMonth] === '予測') h += '<div class="note">この月はまだ締まっていないので、料金表には見込みの合計だけがあります：<b>' + esc(yen(totals[revMonth])) + '</b>（予測）。お客さんごとの内訳は、経理部の月の締めのあとに出ます。</div>';
     else if (!rows.length) h += '<div class="note">この月の売上はありません。</div>';
     else {
-      h += '<ul class="list">' + rows.map(function (x) {
+      h += '<ul class="list tight">' + rows.map(function (x) {
         return '<li><span>' + esc(x.name) + (x.approx ? '<span class="tag approx">概算</span>' : '') + (x.period ? '<span class="sub">' + esc(x.period) + (typeof x.total === 'number' && x.total !== x.amount ? '（請求額 ' + esc(yen(x.total)) + ' を月割り）' : '') + '</span>' : '') + '</span><span class="amt">' + esc(yen(x.amount)) + '</span></li>';
       }).join('') + '</ul>';
       h += '<div class="total"><span>合計（' + rows.length + '件）</span><span>' + esc(yen(rows.reduce(function (s, x) { return s + x.amount; }, 0))) + '</span></div>';
     }
     var un = (det.unsent || {})[revMonth] || [];
     if (un.length) h += '<div class="warn">この月に発行して未送付の請求（売上に入れていません）：' + un.map(function (x) { return esc(x.name) + ' ' + esc(yen(x.amount)); }).join('、') + '</div>';
-    h += '<div class="note">出どころ：料金表_パーソナル「会員台帳」の売上（サービスを提供した月で計上・経理部）。未送付の請求は請求ログから。</div></section>';
+    h += '</section>';
     return h;
   }
 
@@ -394,7 +394,7 @@
     var cur = d.current, curT = st.filter(function (t) { return t.month === cur; })[0] || {}, prevT = st.filter(function (t) { return t.month === d.previous; })[0] || {};
     var next = st.filter(function (t) { return t.month > cur; })[0];
     var h = '<section class="card"><div class="label">月ごとのセッション回数（カレンダー）</div><div class="chart" id="schart">' + sessionChartSvg(st, cur) + '<div class="tip" id="stip"></div></div>' +
-      '<div class="note">濃い色は実施済、薄い色（点線の枠）はこれからの予定。棒をタップすると内訳が出ます。</div></section>';
+      '</section>';
     var diff = typeof curT.total === 'number' && typeof prevT.total === 'number' ? curT.total - prevT.total : null;
     h += '<section class="card"><div class="row"><div class="col"><div class="label">今月（' + monthJa(cur) + '）</div><div class="big">' + (typeof curT.total === 'number' ? curT.total + '回' : '<span class="na">未取得</span>') + '</div>' +
       (typeof curT.done === 'number' ? '<div class="note">実施済 ' + curT.done + '回 ／ 予定 ' + curT.plan + '回</div>' : '') + '</div>' +
@@ -411,20 +411,20 @@
     else if (!shown.length) h += '<div class="note">この月のセッションはありません。</div>';
     else h += '<ul class="list">' + shown.map(function (p) { return '<li><span>' + esc(p.label) + '</span><span class="amt">' + p.value + '回</span></li>'; }).join('') + '</ul>' +
       '<div class="total"><span>合計</span><span>' + sel.total + '回</span></div>';
-    h += '<div class="note">出どころ：Googleカレンダー（予定名に「PT」を含む予定。終日の予定は除く）。場所は予定の「場所」欄の文字でまとめています。</div></section>';
+    h += '</section>';
 
     // レンタルジム代
     var gt = d.gymTrend || [];
     if (gt.length) {
       h += '<section class="card"><div class="label">1セッションあたりの原価（ジム代＋交通費）</div><div class="chart" id="gchart">' +
         chartSvg(gt.map(function (x) { return { month: x.month, value: typeof x.perSession === 'number' && typeof x.travelPer === 'number' ? x.perSession + x.travelPer : null, state: x.state }; }), null, '1セッションあたりの原価') + '<div class="tip" id="gtip"></div></div>' +
-        '<div class="note">薄い棒は予測。棒をタップすると内訳が出ます。</div>';
+        '';
       h += '<ul class="list">' + gt.slice().reverse().map(function (x) {
         return '<li><span>' + Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '<span class="tag fc">予測</span>' : '') +
           '<span class="sub">ジム代 ' + (typeof x.gym === 'number' ? esc(yen(x.gym)) : '未取得') + '・交通費 ' + (typeof x.travel === 'number' ? esc(yen(x.travel)) : '未取得') + ' ÷ ' + (typeof x.calendar === 'number' ? x.calendar + '回' : '未取得') + '</span></span>' +
           '<span class="amt">' + (typeof x.perSession === 'number' && typeof x.travelPer === 'number' ? esc(yen(x.perSession + x.travelPer)) + '<span class="sub" style="text-align:right">ジム代 ' + esc(yen(x.perSession)) + '＋交通費 ' + esc(yen(x.travelPer)) + '</span>' : '<span class="na">未取得</span>') + '</span></li>';
       }).join('') + '</ul>';
-      h += '<div class="note">1回あたり＝その月のレンタルジム代・PTの日の交通費（料金表「粗利_月次」）÷ カレンダーのセッション回数。今月は予定も含めた回数で割り、金額は経理部の見込み（予測）。交通費は2026年8月27日から。カレンダーに入っていないセッションがある月は高めに出ます。</div></section>';
+      h += '</section>';
     }
     return h;
   }
@@ -593,7 +593,7 @@
         '<dt>今月のセッション</dt><dd>' + (m.sessions ? '実施 ' + m.sessions.done + '回 ／ 予定 ' + m.sessions.plan + '回' : '<span class="na">未取得</span>') + '</dd>' +
         '</dl></section>';
     });
-    h += '<div class="note" style="text-align:center">セッション回数は、カレンダーの予定名にその人の名前（または名字）が入っているPT予定を数えています。</div>';
+
     return h;
   }
 
