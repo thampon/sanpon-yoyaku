@@ -199,6 +199,7 @@
   /* 優先ジムが空いていない時間は控えめに（選べるが、おすすめしない） */
   .time.sub:not(.on) { border-style:dashed; border-color:#D5D9DB; background:#F6F6F4; color:#98A2A6; font-weight:500; }
   .legend .lg-pref, .legend .lg-sub { display:inline-block; min-width:52px; padding:1px 6px; margin:3px 2px 3px 0; border:1px solid; border-radius:6px; font-size:11px; text-align:center; }
+  .legend .lg-note { margin-top:4px; font-size:11px; color:var(--sub); }
   .legend .lg-pref { border-color:#7FB79D; background:#EAF5EF; font-weight:750; }
   .legend .lg-sub { border-style:dashed; border-color:#D5D9DB; background:#F6F6F4; color:#98A2A6; }
   .date .np { font-size:10px; color:#3E8A6B; margin-top:3px; font-weight:700; line-height:1.4; }
@@ -623,8 +624,9 @@
     // ② 選んだ日の時間を 朝・昼・夜 に分けて表示
     const d = vs[dayIdx];
     const bands = BANDS.filter(([k]) => bandOn[k]).map(([, nm, r, f, to]) => [nm + '（' + r + '）', f, to]);
-    if (prefId()) h += '<div class="legend"><span class="lg-pref">00:00<span class="dot">●</span></span> ' + esc(prefNames()) + 'で受けられる（おすすめ）' +
-      '<br><span class="lg-sub">00:00</span> ' + esc(prefNames()) + 'が空いておらず、別の場所になる</div>';
+    if (prefId()) h += '<div class="legend"><span class="lg-pref">00:00<span class="dot">●</span></span> ' + esc(prefNames()) + 'を希望できる（おすすめ）' +
+      '<br><span class="lg-sub">00:00</span> ' + esc(prefNames()) + 'は選べない時間' +
+      '<div class="lg-note">※仮予約のあとにジムの空きを確認して確定します。時間や場所が変わることがあります。</div></div>';
     h += '<div class="day"><div class="label">' + esc(d.label) + ' の空き</div>';
     bands.forEach(([name, from, to]) => {
       const ts = d.times.filter((t) => { const hh = Number(t.label.split(':')[0]); return hh >= from && hh < to; });
