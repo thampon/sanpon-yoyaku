@@ -293,11 +293,10 @@
   // 粗利の目標（設定シート。初期値 50万円／月・2027年10月まで）との差
   function goalRow(d, cur) {
     var g = d.grossGoal; if (!g || typeof g.amount !== 'number' || g.amount <= 0) return '';
-    var dl = /^\d{4}-\d{2}$/.test(g.deadline || '') ? g.deadline.slice(0, 4) + '年' + Number(g.deadline.slice(5, 7)) + '月まで' : '';
     var gap = typeof cur.gross === 'number' ? g.amount - cur.gross : null;
-    return '<div class="tgt" style="margin-top:12px"><div class="row" style="align-items:baseline"><div class="col"><div class="label">粗利の目標</div><div class="mid">' + esc(yen(g.amount)) + '<span class="sub" style="display:inline">／月</span></div>' + (dl ? '<div class="note">' + esc(dl) + '</div>' : '') + '</div>' +
-      '<div class="col"><div class="label">今月の目標との差</div><div class="mid">' + (gap === null ? '<span class="na">未取得</span>' : gap > 0 ? 'あと ' + esc(yen(gap)) : '達成') + '</div></div></div>' +
-      (gap !== null ? '<div class="bar" aria-hidden="true"><span style="width:' + Math.max(0, Math.min(100, cur.gross / g.amount * 100)).toFixed(1) + '%"></span></div><div class="note">今月の粗利は目標の ' + Math.round(cur.gross / g.amount * 100) + '%' + (cur.state === '予測' ? '（予測）' : '') + '</div>' : '') + '</div>';
+    var dl = /^\d{4}-\d{2}$/.test(g.deadline || '') ? g.deadline.slice(2, 4) + '/' + Number(g.deadline.slice(5, 7)) : '';
+    return '<div class="tgt" style="margin-top:12px"><div class="head"><span class="name">目標 ' + (g.amount / 10000) + '万円<span class="sub" style="display:inline;font-weight:400">／月</span></span><span class="amt">' + (gap === null ? '' : gap > 0 ? 'あと ' + esc(yen(gap)) : '達成') + '</span></div>' +
+      (gap !== null ? '<div class="bar" aria-hidden="true"><span style="width:' + Math.max(0, Math.min(100, cur.gross / g.amount * 100)).toFixed(1) + '%"></span></div>' : '') + '</div>';
   }
   // 締め前の月：原価の見込みと、今わかっている原価（粗利_月次のM列）を並べる
   function closeRow(cur) {
@@ -309,14 +308,12 @@
     var gt = d.grossTrend || [];
     if (!gt.length) return '';
     var cur = gt.filter(function (x) { return x.month === d.current; })[0] || {};
-    var h = '<section class="card"><div class="row"><div class="col"><div class="label">今月（' + monthJa(d.current) + '）の粗利</div><div class="big">' +
-      (typeof cur.gross === 'number' ? esc(yen(cur.gross)) + fcTag(cur) : '<span class="na">未取得</span>') + '</div>' +
+    var h = '<section class="card"><div class="row"><div class="col"><div class="label">今月の粗利' + fcTag(cur) + '</div><div class="big">' +
+      (typeof cur.gross === 'number' ? esc(yen(cur.gross)) : '<span class="na">未取得</span>') + '</div>' +
       (typeof cur.rate === 'number' ? '<div class="note">粗利率 ' + cur.rate.toFixed(1) + '%</div>' : '') + '</div>' +
-      '<div class="col"><div class="label">' + esc(d.current.slice(0, 4)) + '年の粗利の見込み</div><div class="mid">' + val(d.grossYear || {}, yen) + fcTag(d.grossYear) + '</div>' +
-      '<div class="note">うち今月までの累計 ' + val(d.grossYtd || {}, yen) + '</div></div></div>' +
-      goalRow(d, cur) + closeRow(cur) +
-      '<div class="label" style="margin-top:12px">月ごとの売上と粗利（1年間・3か月先まで）</div>' +
-      '<div class="legend"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率（右の目盛り）</span>' + (d.grossGoal ? '<span><i class="gl"></i>粗利の目標</span>' : '') + '</div>' +
+      '<div class="col"><div class="label">' + esc(d.current.slice(0, 4)) + '年の見込み' + fcTag(d.grossYear) + '</div><div class="mid">' + val(d.grossYear || {}, yen) + '</div></div></div>' +
+      goalRow(d, cur) +
+      '<div class="legend" style="margin-top:12px"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率</span>' + '</div>' +
       '<div class="chart" id="pchart">' + grossComboSvg(gt, d.current, d.grossGoal) + '<div class="tip" id="ptip"></div></div>' +
       '';
     h += '<ul class="list tight">' + gt.map(function (x) {
