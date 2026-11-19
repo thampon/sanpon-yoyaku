@@ -170,9 +170,6 @@
     h += '<div class="kpis"><div><div class="label">前月比' + fcTag(d.growth) + '</div><div class="mid">' + val(d.growth || {}, pct) + '</div></div>' +
       '<div><div class="label">' + esc(d.current.slice(0, 4)) + '年の累計' + fcTag(d.annual) + '</div><div class="mid">' + val(d.annual || {}, yen) + '</div></div></div>';
 
-    [['今月', r.unsentCur], ['先月', r.unsentPrev]].forEach(function (u) {
-      if (typeof u[1].value === 'number' && u[1].value > 0) h += '<div class="warn">' + u[0] + 'の未送付の請求 ' + esc(yen(u[1].value)) + '</div>';
-    });
 
     h += '</section>';
 
