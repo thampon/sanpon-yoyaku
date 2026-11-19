@@ -242,7 +242,8 @@ function apiCustomerView(token) {
       until: c.until ? fmtDay_(c.until) : '',
       sessionMin: lenOf_(c, st),
       gyms: gyms.filter(function (g) { return g.active && c.gymIds.indexOf(g.id) >= 0; })
-        .map(function (g) { return { id: g.id, name: g.name, address: g.address, group: g.group, preferred: g.id === c.prefer }; }),
+        .map(function (g) { return { id: g.id, name: g.name, address: g.address, group: g.group, preferred: c.prefer.split(/[,、\s]+/).indexOf(g.id) >= 0 }; })
+        .sort(function (a, b) { const p = c.prefer.split(/[,、\s]+/); const ia = p.indexOf(a.id), ib = p.indexOf(b.id); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); }),
       // 予約状況：今月1日以降のセッションをカレンダーから（システム導入前に手で入れた分も含む）。取れなければ予約シートの今後分
       bookings: (function () {
         // キャンセル・変更の申請中かどうかを付ける
