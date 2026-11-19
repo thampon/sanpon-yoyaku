@@ -318,13 +318,13 @@
       '<div class="legend" style="margin-top:12px"><span><i style="background:#5b7894"></i>売上</span><span><i style="background:#1f6f5c"></i>粗利</span><span><i class="ln"></i>粗利率</span>' + '</div>' +
       '<div class="chart" id="pchart">' + grossComboSvg(gt, d.current, d.grossGoal) + '<div class="tip" id="ptip"></div></div>' +
       '';
-    // 月ごとの一覧はタップで開く（2026-11-19 社長指示）
-    h += '<details class="more"><summary>月ごとの粗利を見る</summary><ul class="list tight">' + gt.map(function (x) {
-      return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) + '</span>' +
-        '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + (typeof x.rate === 'number' ? '<span class="rate">' + x.rate.toFixed(1) + '%</span>' : '') : '<span class="na">未取得</span>') + '</span></li>';
-
-
-    }).join('') + '</ul></details>';
+    // 月ごとの一覧：直近3か月より前はタップで開く（2026-11-19 社長指示）
+    var li = function (x) { return '<li><span>' + esc(x.month.slice(0, 4)) + '年' + Number(x.month.slice(5, 7)) + '月' + fcTag(x) + '</span>' +
+        '<span class="amt">' + (typeof x.gross === 'number' ? esc(yen(x.gross)) + (typeof x.rate === 'number' ? '<span class="rate">' + x.rate.toFixed(1) + '%</span>' : '') : '<span class="na">未取得</span>') + '</span></li>'; };
+    var from = (function () { var y = +d.current.slice(0, 4), m = +d.current.slice(5, 7) - 3; if (m < 1) { m += 12; y--; } return y + '-' + (m < 10 ? '0' : '') + m; })();
+    var old = gt.filter(function (x) { return x.month < from; }), recent = gt.filter(function (x) { return x.month >= from; });
+    if (old.length) h += '<details class="more"><summary>' + monthJa(old[old.length - 1].month) + '以前を見る</summary><ul class="list tight">' + old.map(li).join('') + '</ul></details>';
+    h += '<ul class="list tight">' + recent.map(li).join('') + '</ul>';
     h += '</section>';
     return h;
   }
