@@ -202,6 +202,7 @@
   /* 優先ジムが空いていない時間は控えめに（選べるが、おすすめしない） */
   .time.sub:not(.on) { border-style:dashed; border-color:#D5D9DB; background:#F6F6F4; color:#98A2A6; font-weight:500; }
   .legend .lg-pref, .legend .lg-sub { display:inline-block; min-width:52px; padding:1px 6px; margin:3px 2px 3px 0; border:1px solid; border-radius:6px; font-size:11px; text-align:center; }
+  .gnote { grid-column:1/-1; font-size:11px; color:var(--sub); line-height:1.5; }
   .legend .lg-note { margin-top:4px; font-size:11px; color:var(--sub); }
   .legend .lg-pref { border-color:#7FB79D; background:#EAF5EF; font-weight:750; }
   .legend .lg-sub { border-style:dashed; border-color:#D5D9DB; background:#F6F6F4; color:#98A2A6; }
@@ -757,7 +758,8 @@
     const multi = picked.gyms.length > 1;
     $('selText').textContent = picked.day + ' ' + picked.label + '〜' + (gymId ? '（' + gymName(gymId) + '）' : '｜場所を選んでください');
     place.innerHTML = multi ? picked.gyms.map((id) =>
-      '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + (view.gyms.some((x) => x.id === id && x.preferred) ? '<span class="tag">おすすめ</span>' : '') + '</button>').join('') : '';
+      '<button class="gym' + (id === gymId ? ' on' : '') + '" data-place="' + esc(id) + '">' + esc(gymName(id)) + (view.gyms.some((x) => x.id === id && x.preferred) ? '<span class="tag">おすすめ</span>' : '') + '</button>').join('') +
+      (prefId() && picked.gyms.some((id) => prefIds().indexOf(id) < 0) ? '<div class="gnote">おすすめ以外は、ご都合で別の場所を相談したいときに選んでください</div>' : '') : '';
     place.querySelectorAll('[data-place]').forEach((b) => b.addEventListener('click', () => { gymId = b.getAttribute('data-place'); renderBar(); }));
     $('reqBtn').disabled = !gymId;
     $('reqBtn').textContent = changing ? 'この日時に変更を申請する' : 'この日時で仮予約する';
