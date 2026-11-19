@@ -79,6 +79,13 @@
   .placeln .pa { flex:1; min-width:0; overflow-wrap:anywhere; }
   .placeln .btn.map { flex:none; min-height:36px; padding:0 14px; font-size:13px; text-decoration:none; display:inline-flex; align-items:center; }
   .placeln.none { color:var(--warn); }
+  .card.cmp { display:flex; align-items:center; gap:10px; padding:10px 12px; }
+  .cmp .cinfo { flex:1; min-width:0; }
+  .cmp .cline { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmp .cgym { color:inherit; text-decoration:underline; text-decoration-color:#9FB7AE; text-underline-offset:3px; }
+  .cmp .cnone { color:var(--warn); font-size:12px; }
+  .cmp .cacts { flex:none; display:flex; flex-direction:column; gap:6px; }
+  .cmp .cacts .btn { min-height:34px; padding:4px 12px; font-size:13px; }
 </style>
 </head>
 <body>
@@ -218,6 +225,21 @@
     else renderCustomers();
   }
 
+  // 確定予約タブ用の短いカード（2026-11-19 さんぽん「文字情報へらして」）：
+  // 日時／名前｜ジム名（押すとGoogleマップ）の2行だけ。住所・申請日時・残回数は出さない。ボタンは右に小さく縦並び
+  function compactCard(b, buttons) {
+    const gname = esc(b.place && b.place.name ? b.place.name : b.gym);
+    const addr = b.place && b.place.address;
+    const gym = addr ? '<a class="cgym" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr) + '" target="_blank" rel="noopener">📍' + gname + '</a>'
+      : gname;
+    return '<div class="card cmp"><div class="cinfo">' +
+      '<div class="title">' + esc(b.date) + ' ' + esc(String(b.time).split('〜')[0]) + '〜</div>' +
+      '<div class="cline">' + esc(b.name) + '｜' + gym + '</div>' +
+      (b.place && !addr ? '<div class="cnone">ジムの住所が未登録です</div>' : '') +
+      (b.past ? '<div class="cnone">日時を過ぎています</div>' : '') +
+      '</div><div class="cacts">' + buttons + '</div></div>';
+  }
+
   function bookingCard(b, buttons) {
     return '<div class="card"><div class="row"><div>' +
       (b.changeOf ? '<div class="chgtag">🔁 日時変更の申請（元：' + esc(b.changeOf) + '）承認すると元の予約は自動でキャンセル・回数は差し引きゼロ</div>' : '') +
@@ -292,9 +314,9 @@
     if (!data.upcoming.length) { $('content').innerHTML = '<div class="empty">確定済みの予約はありません。</div>'; return; }
     const reqs = data.upcoming.filter((b) => b.cancelRequest).length;
     $('content').innerHTML = (reqs ? '<div class="warn"><b>キャンセル・変更の申請が ' + reqs + '件あります</b>（下の黄色の予約）。キャンセル（回数を戻す／消化）か、日時・場所の変更を選んでください。</div>' : '') +
-      data.upcoming.slice().sort((a, b) => (b.cancelRequest ? 1 : 0) - (a.cancelRequest ? 1 : 0)).map((b) => (b.cancelRequest ? reqBanner(b) : '') + bookingCard(b,
-      (data.gyms && b.day ? '<button class="btn sub" data-act="move" data-id="' + esc(b.id) + '">日時・場所を変更</button>' : '') +
-      '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセルする</button>')).join('');
+      data.upcoming.slice().sort((a, b) => (b.cancelRequest ? 1 : 0) - (a.cancelRequest ? 1 : 0)).map((b) => (b.cancelRequest ? reqBanner(b) : '') + compactCard(b,
+      (data.gyms && b.day ? '<button class="btn sub" data-act="move" data-id="' + esc(b.id) + '">変更</button>' : '') +
+      '<button class="btn danger" data-act="cancel" data-id="' + esc(b.id) + '">キャンセル</button>')).join('');
   }
   function reqBanner(b) {
     const parts = String(b.cancelRequest).split('｜');
