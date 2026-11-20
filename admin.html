@@ -84,6 +84,7 @@
   .cmp .cline { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .cmp .cgym { color:inherit; text-decoration:underline; text-decoration-color:#9FB7AE; text-underline-offset:3px; }
   .cmp .cnone { color:var(--warn); font-size:12px; }
+  .cmp .cent { font-size:12px; line-height:1.5; color:var(--sub); margin-top:2px; }
   .cmp .cacts { flex:none; display:flex; flex-direction:column; gap:6px; }
   .cmp .cacts .btn { min-height:34px; padding:4px 12px; font-size:13px; }
 </style>
@@ -236,6 +237,7 @@
       '<div class="title">' + esc(b.date) + ' ' + esc(String(b.time).split('〜')[0]) + '〜</div>' +
       '<div class="cline">' + esc(b.name) + '｜' + gym + '</div>' +
       (b.place && !addr ? '<div class="cnone">ジムの住所が未登録です</div>' : '') +
+      (b.place && b.place.entry ? '<div class="cent">🔑 ' + esc(b.place.entry) + '</div>' : '') +
       (b.past ? '<div class="cnone">日時を過ぎています</div>' : '') +
       '</div><div class="cacts">' + buttons + '</div></div>';
   }

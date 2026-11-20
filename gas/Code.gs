@@ -336,6 +336,18 @@ function calendarBookings_(c, gyms, st, now) {
  * 毎回ちがうジムの場所で、どれも無ければ address は空（＝ジムの住所が未登録）
  */
 function adminPlace_(b, g) {
+  const p = adminPlaceBase_(b, g);
+  // 入室方法（管理画面はトレーナー本人用なので、日時に関係なく出す。2026-11-20 さんぽん指示「解錠方法もシンプルに」）
+  let entry = '';
+  String(DESC_BY_UID_[b['予定ID']] || '').split(/\r?\n/).forEach(function (line) {
+    const m = line.match(/^(?:入室|鍵)[：:]\s*(.+)$/);
+    if (m && !entry) entry = m[1].trim();
+  });
+  if (!entry && g && g.entry && (!p.name || p.name === g.name)) entry = g.entry;
+  p.entry = entry;
+  return p;
+}
+function adminPlaceBase_(b, g) {
   const loc = String(LOC_BY_UID_[b['予定ID']] || '').trim();
   const m = loc.match(/^(.*)（([^（）]+)）\s*$/);
   if (m) return { name: m[2].trim(), address: m[1].replace(/^〒\s*(\d{3}-?\d{4})?\s*/, '').trim() };
@@ -1107,18 +1119,20 @@ function apiCancel(adminToken, bookingId, refund) {
 
 /** 期間内の予定を1回で取り、iCalUID → 開始日時 の対応表を返す */
 let LOC_BY_UID_ = {}; // startsByUid_ で一緒に取った予定の「場所」欄（管理画面の確定予約に住所を出すため）
+let DESC_BY_UID_ = {}; // 同じく「説明」欄（管理画面の確定予約に入室方法を出すため。2026-11-20）
 function startsByUid_(calId, from, to) {
   const map = {};
   let pageToken;
   do {
     const res = Calendar.Events.list(calId, {
       timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: true, maxResults: 2500, pageToken: pageToken,
-      fields: 'nextPageToken,items(iCalUID,start,status,location)'
+      fields: 'nextPageToken,items(iCalUID,start,status,location,description)'
     });
     (res.items || []).forEach(function (ev) {
       if (ev.status === 'cancelled' || !ev.iCalUID || !ev.start) return;
       map[ev.iCalUID] = ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(ev.start.date + 'T00:00:00+09:00');
       LOC_BY_UID_[ev.iCalUID] = ev.location || '';
+      DESC_BY_UID_[ev.iCalUID] = ev.description || '';
     });
     pageToken = res.nextPageToken;
   } while (pageToken);
