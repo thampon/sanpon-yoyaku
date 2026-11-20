@@ -1660,7 +1660,7 @@ function appendRow_(name, obj) {
 
 // ===== Slack =====
 /** お客さんへの連絡の末尾に付ける名乗り（経理部・カスタマーサクセス部と共通の「運営AI」） */
-const SIGNATURE_ = '\n\n━━━━━━━━━━━━\n:robot_face: *運営AI*\n━━━━━━━━━━━━';
+const SIGNATURE_ = '\n\n:robot_face: *運営AI*'; // 2026-11-20 社長指示：区切り線（━）は使わない
 /** ジム名をGoogleマップへのリンクにする（Slackの書式 <URL|文字>。住所が無ければジム名だけ）（2026-11-19 社長依頼） */
 function mapLink_(name, address) {
   const n = String(name || '').replace(/[<>|]/g, ' ').replace(/&/g, '&amp;');
