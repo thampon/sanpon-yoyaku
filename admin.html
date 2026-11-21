@@ -282,6 +282,8 @@
     let html = '';
     if (b.gymId === 'roppongi') html += a(TRETRE_MELA_ROPPONGI + '?date=' + b.day + '&coupon=MELAMELA', '🔎 TreTre（mela六本木）');
     if (b.gymId === 'area_noborito') html += a('https://cl.gyms.jp/', '🔎 Gym\'s（STREAM登戸）');
+    // Aivic新富町の公式予約（upnow）。日付は渡せないので、開いた先で選ぶ（2026-11-21 さんぽん指示）
+    if (b.gymId === 'shintomi') html += a('https://upnow.jp/aivic/aivicsntmgym/book', '🔎 upnow（Aivic新富町）');
     const words = GYMKARI_WORDS[b.gymId];
     html += words ? words.map((w) => a('https://gymkari.jp/search?area_word=' + encodeURIComponent(w) + (when ? '&' + when : ''), '🔎 ジムカリ：' + w)).join('')
       : a('https://gymkari.jp/rentalgym' + (when ? '?' + when : ''), '🔎 ジムカリで探す');
