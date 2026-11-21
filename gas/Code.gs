@@ -1322,7 +1322,7 @@ function loadBusyFast_(calId, from, to, st, gyms) {
       }
       const ep = ev.extendedProperties || {};
       const tag = (ep.shared && ep.shared.spGym) || (ep.private && ep.private.spGym) || ''; // 場所を変えた時の印（shared）を優先
-      const gymId = matchGym_(ev.location, gyms) || tag; // 場所欄を優先
+      const gymId = matchGym_(ev.location, gyms) || tag || matchTitle_(ev.summary, gyms); // 場所欄を優先。場所欄が空なら予定名の「件名:」キーワード（例：チキンワークス→登戸）
       out.push({ start: new Date(ev.start.dateTime), end: new Date(ev.end.dateTime), gymId: gymId || null, allDay: false });
     });
     pageToken = res.nextPageToken;
@@ -1373,6 +1373,23 @@ function matchGym_(location, gyms) {
     const words = [g.name].concat(g.keywords);
     for (let j = 0; j < words.length; j++) {
       if (words[j] && loc.indexOf(words[j]) >= 0) return g.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * 予定名からジムを推定（2026-11-20 さんぽん指示：チキンワークスは登戸付近）
+ * ジムシートの判定キーワードのうち「件名:」で始まるものだけを、予定名と照合する（場所欄が空の予定用）
+ */
+function matchTitle_(title, gyms) {
+  const t = String(title || '');
+  if (!t) return null;
+  for (let i = 0; i < gyms.length; i++) {
+    const words = gyms[i].keywords || [];
+    for (let j = 0; j < words.length; j++) {
+      const w = String(words[j] || '');
+      if (w.indexOf('件名:') === 0 && w.length > 3 && t.indexOf(w.slice(3)) >= 0) return gyms[i].id;
     }
   }
   return null;
