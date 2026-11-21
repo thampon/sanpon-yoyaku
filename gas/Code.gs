@@ -364,17 +364,18 @@ function isFixedGym_(g) { return !!(g && (g.checkCal || g.entry)); }
  * 対象：ジムカリ／TreTre／Gym's（STREAM）／スペースマーケット（thampon0306からの転送を含む）
  * 戻り値：{ name, address, site } または null（見つからない）／{ canceled: true }（あとからキャンセルのメールが来ている）／{ error }
  */
-const KNOWN_GYM_ADDR_ = [ // メールに住所が書かれないサイト（TreTre・Gym's）用。ジムカリ・スペマはメールの住所を使う
+const KNOWN_GYM_ADDR_ = [ // メールに住所が書かれないサイト（TreTre・Gym's・upnow）用。ジムカリ・スペマはメールの住所を使う
   [/mela.*六本木/, '東京都港区六本木3-5-14 かなりマンション302号室'],
   [/mela.*(新富|銀座)/, '東京都中央区新富1-5-13 ブレシア銀座イースト1階'],
   [/STREAM.*登戸/, '神奈川県川崎市多摩区登戸2519-1 ヨシザワ10 3F'],
   [/Aivic.*新富/, '東京都中央区新富2-4-9 三新ビル4階'],
+  [/Aivic.*築地/, '東京都中央区築地2-10-9 HARVEY築地5階'],
   [/BE ?LIKE.*たまプラーザ/, '神奈川県横浜市青葉区美しが丘1-11-11 美しが丘マンション202']
 ];
 function findGymMail_(s) {
   const want = gymMailKey_(Utilities.formatDate(s, TZ, 'M'), Utilities.formatDate(s, TZ, 'd'), Utilities.formatDate(s, TZ, 'H'), Utilities.formatDate(s, TZ, 'mm'));
   // 速さのため、まずその日付が書かれたメールだけ探す。見つからなければ直近のメールを全部見る
-  const from = '(from:info@gymkari.jp OR from:noreply@send.space.tre-tre.com OR from:system@gyms.jp OR from:no-reply@spacemarket.com OR (from:thampon0306@gmail.com spacemarket))';
+  const from = '(from:info@gymkari.jp OR from:noreply@send.space.tre-tre.com OR from:system@gyms.jp OR from:no-reply@spacemarket.com OR from:noreply@upnow.jp OR (from:thampon0306@gmail.com spacemarket))';
   const y = Utilities.formatDate(s, TZ, 'yyyy'), mo = Utilities.formatDate(s, TZ, 'M'), mo2 = Utilities.formatDate(s, TZ, 'MM'), d = Utilities.formatDate(s, TZ, 'd'), d2 = Utilities.formatDate(s, TZ, 'dd');
   const dates = '("' + mo + '月' + d + '日" OR "' + y + '-' + mo2 + '-' + d2 + '" OR "' + y + '年' + mo2 + '月' + d2 + '日" OR "' + y + '/' + mo + '/' + d + '" OR "' + y + '/' + mo2 + '/' + d2 + '")';
   let r;
@@ -430,6 +431,11 @@ function parseGymMail_(subject, body) {
     const a = body.match(/\n住所\s+(.+)\n(?:<[^>\n]*>\n)?([^\n<]*)/);
     if (a) address = (a[1].trim() + ' ' + String(a[2] || '').trim()).trim();
     const n = body.match(/会場名\s+(.+)/) || body.match(/スペース名\s+(.+)/); name = n ? n[1].trim() : '';
+  } else if (/upnow|Aivic/.test(subject + body) && (m = body.match(/予約日時：\s*\d{4}\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/))) {
+    // upnow（Aivicの公式予約）：【予約完了】【ご予約内容の確認】＝確定、【予約キャンセル完了】＝キャンセル（2026-11-21 追加）
+    if (!cancel && !/(予約完了|予約内容の確認)/.test(subject)) return null;
+    key = gymMailKey_(m[1], m[2], m[3], m[4]);
+    const n = body.match(/スペース：\s*(.+)/); name = n ? n[1].trim() : '';
   } else return null;
   return { key: key, name: name, address: address.replace(/\s+/g, ' '), cancel: cancel };
 }
