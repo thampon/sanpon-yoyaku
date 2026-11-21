@@ -968,6 +968,9 @@ function apiApprove(adminToken, bookingId, change) {
       }
 
       const quiet = !!(change && change.notify === false);
+      // 管理画面で任意に書いた「お客さんへのひとこと」（確定連絡に添える）
+      const cm = String((change && change.comment) || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      const withCm = function (n) { return cm ? (n ? n + '\n　' : '') + '💬 ' + cm : n; };
       // 確定連絡は翌朝まとめて送る（2026-11-21 さんぽん指示）。ただしセッションが翌朝の連絡日以前なら、間に合わないので今送る
       const nowMs = Date.now();
       const urgent = needNowNotify_(s, nowMs, st.approveHour);
@@ -977,13 +980,13 @@ function apiApprove(adminToken, bookingId, change) {
         const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
         const chgNote = '（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜｜' + og.name + ' から変更）';
         if (!urgent || quiet) {
-          addBatchPending_(c.id, b['予約ID'], urgent ? nowMs + BATCH_WAIT_MS_ : morningAfter_(nowMs, st.approveHour), chgNote);
+          addBatchPending_(c.id, b['予約ID'], urgent ? nowMs + BATCH_WAIT_MS_ : morningAfter_(nowMs, st.approveHour), withCm(chgNote));
           if (!urgent) markContact_([b['予約ID']], '待ち（翌朝' + st.approveHour + '時にまとめて連絡）');
           return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
             (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (urgent ? 'お客さんにはまだ連絡していません。' : laterNote) + (placeNote ? '\n' + placeNote : '');
         }
         const sentC = sendTracked_(c, [b['予約ID']], 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
-          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + SIGNATURE_SHORT_);
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + (cm ? '\n\n' + cm : '') + SIGNATURE_SHORT_);
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
           (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + sentNote_(sentC) + (placeNote ? '\n' + placeNote : '');
       }
@@ -991,15 +994,15 @@ function apiApprove(adminToken, bookingId, change) {
       // 画面を閉じるなどで頼まれなかったときに備え、サーバー側にも「まとめ連絡待ち」を残す（5分たっても頼まれなければ自動で送る）
       const wishNote = changed ? '（ご希望の ' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + ' から変更）' : '';
       if (!urgent) {
-        addBatchPending_(c.id, b['予約ID'], morningAfter_(nowMs, st.approveHour), wishNote);
+        addBatchPending_(c.id, b['予約ID'], morningAfter_(nowMs, st.approveHour), withCm(wishNote));
         markContact_([b['予約ID']], '待ち（翌朝' + st.approveHour + '時にまとめて連絡）');
         return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + laterNote + (placeNote ? '\n' + placeNote : '');
       }
-      if (quiet) addBatchPending_(c.id, b['予約ID'], nowMs + BATCH_WAIT_MS_, wishNote);
+      if (quiet) addBatchPending_(c.id, b['予約ID'], nowMs + BATCH_WAIT_MS_, withCm(wishNote));
       const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: mapLink_(place.name, place.address), address: place.address, remaining: rem
-      }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : '') + SIGNATURE_SHORT_);
+      }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : '') + (cm ? '\n\n' + cm : '') + SIGNATURE_SHORT_);
       return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent)) + (placeNote ? '\n' + placeNote : '');
     });
   });

@@ -378,8 +378,8 @@
     if (act === 'approve') {
       const b = find(data.pending, id);
       const r = await ask({ title: '承認しますか？', body: esc(b.name) + 'さん｜' + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) + '<br>ジムは押さえましたか？',
-        buttons: [{ label: '承認する', value: 1 }] });
-      if (r) run('apiApprove', id);
+        extra: '<label>お客さんへのひとこと（任意・確定連絡に添えます）<textarea name="comment" rows="2" maxlength="200" placeholder="例：新富町が埋まっていたので六本木にしました"></textarea></label>', buttons: [{ label: '承認する', value: 1 }] });
+      if (r) run('apiApprove', id, (r.vals.comment || '').trim() ? { comment: r.vals.comment.trim() } : undefined);
     } else if (act === 'edit' || act === 'move') {
       const isMove = act === 'move';
       const b = find(isMove ? data.upcoming : data.pending, id);
@@ -389,7 +389,7 @@
       const extra = '<label>日付<input type="date" name="date" value="' + esc(b.day) + '"></label>' +
         '<label>開始時刻<input type="time" name="time" step="300" value="' + esc(hm) + '"></label>' +
         '<label>場所<select name="gymId">' + gyms.map((g) => '<option value="' + esc(g.id) + '"' + (g.id === b.gymId ? ' selected' : '') + '>' + esc(g.name) + '</option>').join('') + '</select></label>' +
-        (isMove ? '<label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="notify" value="1" checked style="width:auto;margin:0"> お客さんにSlackで変更を連絡する</label>' : '');
+        (isMove ? '<label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input type="checkbox" name="notify" value="1" checked style="width:auto;margin:0"> お客さんにSlackで変更を連絡する</label>' : '<label>お客さんへのひとこと（任意・確定連絡に添えます）<textarea name="comment" rows="2" maxlength="200" placeholder="例：新富町が埋まっていたので六本木にしました"></textarea></label>');
       const r = await ask({
         title: isMove ? '日時・場所を変更' : '日時・場所を変えて承認',
         body: esc(b.name) + 'さん｜' + (isMove ? '現在：' : 'ご希望：') + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) +
@@ -399,6 +399,7 @@
       if (!r) return;
       const ch = { date: r.vals.date, time: r.vals.time, gymId: r.vals.gymId };
       if (isMove) ch.notify = !!r.checked;
+      else if ((r.vals.comment || '').trim()) ch.comment = r.vals.comment.trim();
       if (!ch.date || !ch.time) { toast('⚠ 日付と時刻を入れてください'); return; }
       const fn = isMove ? 'apiReschedule' : 'apiApprove';
       if (working) return;
