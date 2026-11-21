@@ -968,17 +968,34 @@ function apiApprove(adminToken, bookingId, change) {
       }
 
       const quiet = !!(change && change.notify === false);
+      // 確定連絡は翌朝まとめて送る（2026-11-21 さんぽん指示）。ただしセッションが翌朝の連絡日以前なら、間に合わないので今送る
+      const nowMs = Date.now();
+      const urgent = needNowNotify_(s, nowMs, st.approveHour);
+      const laterNote = '確定連絡は翌朝' + st.approveHour + '時にまとめて送ります。';
       if (chgOf) {
         const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
         const og = gymById_(gyms, chgOf['ジムID']) || { name: chgOf['ジムID'] };
-        const sentC = quiet ? null : sendTracked_(c, [b['予約ID']], 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
+        const chgNote = '（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜｜' + og.name + ' から変更）';
+        if (!urgent || quiet) {
+          addBatchPending_(c.id, b['予約ID'], urgent ? nowMs + BATCH_WAIT_MS_ : morningAfter_(nowMs, st.approveHour), chgNote);
+          if (!urgent) markContact_([b['予約ID']], '待ち（翌朝' + st.approveHour + '時にまとめて連絡）');
+          return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
+            (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (urgent ? 'お客さんにはまだ連絡していません。' : laterNote) + (placeNote ? '\n' + placeNote : '');
+        }
+        const sentC = sendTracked_(c, [b['予約ID']], 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
           '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + SIGNATURE_SHORT_);
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
-          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sentC)) + (placeNote ? '\n' + placeNote : '');
+          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + sentNote_(sentC) + (placeNote ? '\n' + placeNote : '');
       }
       // まとめ承認（1件ずつの連絡を止めた承認）は、管理画面が最後にまとめ連絡を頼む。
       // 画面を閉じるなどで頼まれなかったときに備え、サーバー側にも「まとめ連絡待ち」を残す（5分たっても頼まれなければ自動で送る）
-      if (quiet) addBatchPending_(c.id, b['予約ID']);
+      const wishNote = changed ? '（ご希望の ' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + ' から変更）' : '';
+      if (!urgent) {
+        addBatchPending_(c.id, b['予約ID'], morningAfter_(nowMs, st.approveHour), wishNote);
+        markContact_([b['予約ID']], '待ち（翌朝' + st.approveHour + '時にまとめて連絡）');
+        return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + laterNote + (placeNote ? '\n' + placeNote : '');
+      }
+      if (quiet) addBatchPending_(c.id, b['予約ID'], nowMs + BATCH_WAIT_MS_, wishNote);
       const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: mapLink_(place.name, place.address), address: place.address, remaining: rem
@@ -998,25 +1015,31 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
     requireAdmin_(adminToken);
     const ids = (Array.isArray(bookingIds) ? bookingIds : []).map(String);
     if (!ids.length) fail_('予約が選ばれていません。');
-    removeBatchPending_(ids);
+    const st = getSettings_(), nowMs = Date.now();
     ROWS_MEMO_ = {}; FRESH_READS_ = true; // 承認直後の最新のシートで判断する
     let rows, gyms;
     try { rows = readRows_(SH.BOOKINGS); gyms = getGyms_(); readRows_(SH.CUSTOMERS); } finally { FRESH_READS_ = false; }
-    const groups = {}, order = [];
+    // 翌朝まとめて送るもの（2026-11-21 さんぽん指示）は、承認のときに「まとめ連絡待ち」に入っているので、ここでは送らない
+    const groups = {}, order = [], laterNames = [], urgentIds = [], confirmedIds = [];
     rows.forEach(function (b) {
       if (ids.indexOf(b['予約ID']) < 0 || b['状態'] !== STATUS.CONFIRMED) return;
+      confirmedIds.push(b['予約ID']);
+      if (!needNowNotify_(new Date(b['開始']), nowMs, st.approveHour)) { if (laterNames.indexOf(b['氏名']) < 0) laterNames.push(b['氏名']); return; }
+      urgentIds.push(b['予約ID']);
       if (!groups[b['顧客ID']]) { groups[b['顧客ID']] = []; order.push(b['顧客ID']); }
       groups[b['顧客ID']].push(b);
     });
-    const sentNames = [], failed = [], confirmedIds = [];
-    order.forEach(function (cid) { groups[cid].forEach(function (b) { confirmedIds.push(b['予約ID']); }); });
+    const notes = pendingNotes_(urgentIds);
+    removeBatchPending_(urgentIds);
+    const sentNames = [], failed = [];
     order.forEach(function (cid) {
       const c = requireCustomerById_(cid);
-      const text = batchApproveText_(c, groups[cid].sort(byStart_), gyms);
+      const text = batchApproveText_(c, groups[cid].sort(byStart_), gyms, notes);
       const r = sendTracked_(c, groups[cid].map(function (b) { return b['予約ID']; }), text);
       if (r.ok) sentNames.push(c.name); else failed.push({ name: c.name, error: r.error, queued: !!r.queued });
     });
-    const msg = (sentNames.length ? sentNames.join('、') + 'さんに確定連絡をまとめて送りました。' : '') +
+    const msg = (laterNames.length ? laterNames.join('、') + 'さんの確定連絡は、翌朝' + st.approveHour + '時にまとめて送ります。' : '') +
+      (sentNames.length ? sentNames.join('、') + 'さんに確定連絡をまとめて送りました（セッションが近いため今送信）。' : '') +
       (failed.length ? '※' + failed.map(function (f) { return f.name + 'さん（' + f.error + '）'; }).join('、') + 'へのSlack連絡は失敗しました。' +
         (failed.every(function (f) { return f.queued; }) ? '1分ごとに自動で再送し、' + RETRY_MAX_ + '回再送しても届かなければSlackでお知らせします。' : '手動で連絡してください。') : '');
     return { sent: sentNames, failed: failed, confirmedIds: confirmedIds, text: msg || '連絡する予約がありませんでした。' };
@@ -1024,7 +1047,8 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
 }
 
 /** まとめて確定したときの文面（1人分） */
-function batchApproveText_(c, list, gyms) {
+function batchApproveText_(c, list, gyms, notes) {
+  notes = notes || {};
   // 承認時に決めた実際のジム名・住所（予約シートの「ジム名」「ジム住所」）を使う。無い古い行は、場所が固定のジムだけ登録上の住所
   const gymOf = function (b) {
     const g = gymById_(gyms, b['ジムID']) || { id: b['ジムID'], name: b['ジムID'], address: '' };
@@ -1034,7 +1058,7 @@ function batchApproveText_(c, list, gyms) {
   const same = list.every(function (b) { return gymOf(b).name === gymOf(list[0]).name && gymOf(b).address === gymOf(list[0]).address; });
   const lines = list.map(function (b) {
     const s = new Date(b['開始']), e = new Date(b['終了']);
-    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + mapLink_(gymOf(b).name, gymOf(b).address));
+    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + mapLink_(gymOf(b).name, gymOf(b).address)) + (notes[b['予約ID']] ? '\n　' + notes[b['予約ID']] : '');
   });
   const out = ['ご予約が確定しました（' + list.length + '件）。', ''].concat(lines);
   if (same) {
@@ -1490,6 +1514,7 @@ function getSettings_() {
     alldayWords: splitList_(s.ALLDAY_BLOCK_WORDS),
     staleHours: num_(s.STALE_HOURS, 24),
     tplApprove: s.TEMPLATE_APPROVE || DEFAULT_ROWS['設定'][11][1],
+    approveHour: num_(s.APPROVE_NOTIFY_HOUR, 8), // 確定連絡をまとめて送る朝の時刻（2026-11-21 さんぽん指示：承認しても通知はまとめて翌朝）
     tplReject: s.TEMPLATE_REJECT || DEFAULT_ROWS['設定'][12][1],
     tplCancel: s.TEMPLATE_CANCEL || DEFAULT_ROWS['設定'][13][1],
     rentalTitle: s.RENTAL_TITLE || DEFAULT_ROWS['設定'][14][1]
@@ -1758,10 +1783,24 @@ function withBatchPending_(fn) {
     if (q.length) p.setProperty('BATCH_PENDING', JSON.stringify(q)); else p.deleteProperty('BATCH_PENDING');
   } finally { if (!held) lock.releaseLock(); }
 }
-function addBatchPending_(cid, id) {
-  try { withBatchPending_(function (q) { q.push({ cid: cid, id: id, at: Date.now() }); return q; }); }
+function addBatchPending_(cid, id, due, note) {
+  try { withBatchPending_(function (q) { q = q.filter(function (x) { return x.id !== id; }); q.push({ cid: cid, id: id, at: Date.now(), due: due || (Date.now() + BATCH_WAIT_MS_), note: note || '', morning: !!due && due - Date.now() > BATCH_WAIT_MS_ }); return q; }); }
   catch (e) { Logger.log('まとめ連絡待ちの登録に失敗: ' + e); }
 }
+function pendingNotes_(ids) {
+  const out = {};
+  try { JSON.parse(PropertiesService.getScriptProperties().getProperty('BATCH_PENDING') || '[]').forEach(function (x) { if (ids.indexOf(x.id) >= 0 && x.note) out[x.id] = x.note; }); } catch (e) {}
+  return out;
+}
+/** t（ミリ秒）より後の、いちばん近い朝 hour 時（日本時間） */
+function morningAfter_(t, hour) {
+  const j = new Date(t + 9 * 3600000);
+  let due = Date.UTC(j.getUTCFullYear(), j.getUTCMonth(), j.getUTCDate(), hour) - 9 * 3600000;
+  if (due <= t) due += 86400000;
+  return due;
+}
+/** 翌朝のまとめ連絡では間に合わない（セッションが連絡日の当日以前）なら true */
+function needNowNotify_(start, t, hour) { return dayKey_(start) <= dayKey_(new Date(morningAfter_(t, hour))); }
 function removeBatchPending_(ids) {
   try { withBatchPending_(function (q) { return q.filter(function (x) { return ids.indexOf(x.id) < 0; }); }); }
   catch (e) { Logger.log('まとめ連絡待ちの削除に失敗: ' + e); }
@@ -1772,33 +1811,40 @@ function sendOrphanBatches_() {
   const now = Date.now();
   try {
     withBatchPending_(function (q) {
-      // お客さんごとに、最後の承認から5分たったものだけ送る（まとめ承認の途中で送らないように）
-      const last = {};
-      q.forEach(function (x) { last[x.cid] = Math.max(last[x.cid] || 0, x.at); });
-      due = q.filter(function (x) { return now - last[x.cid] >= BATCH_WAIT_MS_; });
-      return q.filter(function (x) { return now - last[x.cid] < BATCH_WAIT_MS_; });
+      // 送る時刻（due）を過ぎたものだけ送る。翌朝まとめて送るもの（morning）と、管理画面から頼まれなかったまとめ承認（5分後）
+      const dueAt = function (x) { return x.due || (x.at + BATCH_WAIT_MS_); };
+      due = q.filter(function (x) { return now >= dueAt(x); });
+      return q.filter(function (x) { return now < dueAt(x); });
     });
   } catch (e) { return; }
   if (!due.length) return;
   const ids = due.map(function (x) { return x.id; });
+  const notes = {}, morningIds = [];
+  due.forEach(function (x) { if (x.note) notes[x.id] = x.note; if (x.morning) morningIds.push(x.id); });
   ROWS_MEMO_ = {}; FRESH_READS_ = true;
   let rows, gyms;
   try { rows = readRows_(SH.BOOKINGS); gyms = getGyms_(); readRows_(SH.CUSTOMERS); } finally { FRESH_READS_ = false; }
   const groups = {};
   rows.forEach(function (b) {
     // 連絡列に記録がある＝すでに連絡済み（手動で送った場合も含む）は送らない
-    if (ids.indexOf(b['予約ID']) < 0 || b['状態'] !== STATUS.CONFIRMED || String(b['連絡'] || '')) return;
+    if (ids.indexOf(b['予約ID']) < 0 || b['状態'] !== STATUS.CONFIRMED || /^(済|失敗)/.test(String(b['連絡'] || ''))) return;
     (groups[b['顧客ID']] = groups[b['顧客ID']] || []).push(b);
   });
+  const morningSent = [];
   Object.keys(groups).forEach(function (cid) {
     try {
       const c = requireCustomerById_(cid);
       const list = groups[cid].sort(byStart_);
-      const r = sendTracked_(c, list.map(function (b) { return b['予約ID']; }), batchApproveText_(c, list, gyms));
+      const r = sendTracked_(c, list.map(function (b) { return b['予約ID']; }), batchApproveText_(c, list, gyms, notes));
+      if (list.every(function (b) { return morningIds.indexOf(b['予約ID']) >= 0; })) {
+        morningSent.push(c.name + 'さん（' + list.length + '件' + (r.ok ? '' : '・送信失敗、自動で再送します') + '）');
+        return;
+      }
       notifyTrainer_((r.ok ? ':envelope: ' : ':warning: ') + c.name + 'さんのまとめ承認（' + list.length + '件）の確定連絡が管理画面から送られていなかったため、自動で' +
         (r.ok ? '送りました。' : '送ろうとしましたが失敗しました（' + r.error + '）。自動で再送します。'));
     } catch (e) { notifyTrainer_(':warning: まとめ承認の確定連絡を自動で送れませんでした（' + cid + '：' + e + '）。手動で連絡してください。'); }
   });
+  if (morningSent.length) notifyTrainer_(':envelope: 昨日承認した予約の確定連絡を、まとめて送りました：' + morningSent.join('、'));
 }
 /** 再送待ちを1回分処理する（flushNotifyQueue から毎分呼ぶ） */
 function retryCustomerSends_() {
