@@ -973,7 +973,10 @@ function apiApprove(adminToken, bookingId, change) {
       const withCm = function (n) { return cm ? (n ? n + '\n　' : '') + '💬 ' + cm : n; };
       // 確定連絡は翌朝まとめて送る（2026-11-21 さんぽん指示）。ただしセッションが翌朝の連絡日以前なら、間に合わないので今送る
       const nowMs = Date.now();
-      const urgent = needNowNotify_(s, nowMs, st.approveHour);
+      // 日時・場所を変えて承認したものは、翌朝を待たずにすぐ、お客さんへのメンション付きで送る（2026-11-21 さんぽん指示）
+      const urgent = changed || needNowNotify_(s, nowMs, st.approveHour);
+      const mt = changed && !quiet ? mentionOf_(c) : '';
+      const mtNote = changed && !quiet ? (mt ? '（メンション付き）' : '（チャンネルのメンバーが取れず、メンションなし）') : '';
       const laterNote = '確定連絡は翌朝' + st.approveHour + '時にまとめて送ります。';
       if (chgOf) {
         const os = new Date(chgOf['開始']), oe = new Date(chgOf['終了']);
@@ -985,10 +988,10 @@ function apiApprove(adminToken, bookingId, change) {
           return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
             (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (urgent ? 'お客さんにはまだ連絡していません。' : laterNote) + (placeNote ? '\n' + placeNote : '');
         }
-        const sentC = sendTracked_(c, [b['予約ID']], 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
-          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + (cm ? '\n\n' + cm : '') + SIGNATURE_SHORT_);
+        const sentC = sendTracked_(c, [b['予約ID']], mt + 'ご予約の日時を変更しました。\n\n変更前：' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜' + fmtTime_(oe) + '｜' + og.name +
+          '\n変更後：' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + '\n場所：' + mapLink_(place.name, place.address) + (place.address ? '\n住所：' + place.address : '') + '\n残り回数：' + rem + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : '') + (cm ? '\n\n' + cm : '') + SIGNATURE_SHORT_);
         return '日時変更を確定しました（' + fmtDay_(os) + ' ' + fmtTime_(os) + '〜 → ' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜、回数はそのまま' + rem + '回）。元の予約はキャンセルしました。' +
-          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + sentNote_(sentC) + (placeNote ? '\n' + placeNote : '');
+          (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + sentNote_(sentC) + mtNote + (placeNote ? '\n' + placeNote : '');
       }
       // まとめ承認（1件ずつの連絡を止めた承認）は、管理画面が最後にまとめ連絡を頼む。
       // 画面を閉じるなどで頼まれなかったときに備え、サーバー側にも「まとめ連絡待ち」を残す（5分たっても頼まれなければ自動で送る）
@@ -999,11 +1002,11 @@ function apiApprove(adminToken, bookingId, change) {
         return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + laterNote + (placeNote ? '\n' + placeNote : '');
       }
       if (quiet) addBatchPending_(c.id, b['予約ID'], nowMs + BATCH_WAIT_MS_, withCm(wishNote));
-      const sent = quiet ? null : sendTracked_(c, [b['予約ID']], fill_(st.tplApprove, {
+      const sent = quiet ? null : sendTracked_(c, [b['予約ID']], mt + fill_(st.tplApprove, {
         name: c.name, date: fmtDay_(s), time: fmtTime_(s) + '〜' + fmtTime_(e),
         gym: mapLink_(place.name, place.address), address: place.address, remaining: rem
       }) + (changed ? '\n\n※ご希望の「' + fmtDay_(s0) + ' ' + fmtTime_(s0) + '〜｜' + gym0.name + '」から、上記に変更して確定しています。' : '') + (cm ? '\n\n' + cm : '') + SIGNATURE_SHORT_);
-      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent)) + (placeNote ? '\n' + placeNote : '');
+      return (changed ? '日時・場所を変更して' : '') + '確定しました（残回数 ' + rem + '回）。' + (rentalId ? gym.name + 'のカレンダーにも登録しました。' : '') + (quiet ? 'お客さんにはまだ連絡していません。' : sentNote_(sent) + mtNote) + (placeNote ? '\n' + placeNote : '');
     });
   });
 }
@@ -1873,6 +1876,31 @@ function retryCustomerSends_() {
     try { withRetryQueue_(function (q) { return keep.concat(q); }); }
     catch (e) { keep.forEach(function (it) { notifyTrainer_(':warning: 再送待ちを保存できませんでした。' + it.cid + ' へ手動で連絡してください。\n' + it.text); }); }
   }
+}
+/**
+ * お客さんへのメンション（'<@U…> '）。DMはメンション不要なので空。
+ * 共有チャンネルは、メンバーから送信者（さんぽん）を除いた人をメンションする。結果は1日キャッシュ。取れなければ空
+ */
+function mentionOf_(c) {
+  if (!c.slack || /^D/.test(c.slack)) return '';
+  const props = PropertiesService.getScriptProperties();
+  const key = 'MENTION_' + c.slack;
+  try {
+    const hit = JSON.parse(props.getProperty(key) || 'null');
+    if (hit && Date.now() - hit.at < 86400000) return hit.m;
+  } catch (e) {}
+  try {
+    const tok = props.getProperty('SLACK_USER_TOKEN');
+    if (!tok) return '';
+    const get = function (url) { return JSON.parse(UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + tok }, muteHttpExceptions: true }).getContentText()); };
+    const me = get('https://slack.com/api/auth.test');
+    const mem = get('https://slack.com/api/conversations.members?limit=50&channel=' + encodeURIComponent(c.slack));
+    if (!me.ok || !mem.ok) { Logger.log('メンション先の取得に失敗: ' + (me.error || mem.error)); return ''; }
+    const ids = (mem.members || []).filter(function (u) { return u !== me.user_id; });
+    const m = ids.length && ids.length <= 3 ? ids.map(function (u) { return '<@' + u + '>'; }).join(' ') + ' ' : '';
+    props.setProperty(key, JSON.stringify({ at: Date.now(), m: m }));
+    return m;
+  } catch (e) { Logger.log('メンション先の取得に失敗: ' + e); return ''; }
 }
 function sendCustomer_(c, text) {
   const tok = PropertiesService.getScriptProperties().getProperty('SLACK_USER_TOKEN');

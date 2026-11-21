@@ -394,7 +394,7 @@
         title: isMove ? '日時・場所を変更' : '日時・場所を変えて承認',
         body: esc(b.name) + 'さん｜' + (isMove ? '現在：' : 'ご希望：') + esc(b.date) + ' ' + esc(b.time) + '｜' + esc(b.gym) +
           (isMove ? '<br>長さはそのまま。回数券は動きません。ブースの予約は新しい時間で入れ直します。'
-                  : '<br>長さはご希望と同じです。確定連絡に「ご希望から変更」と書き添えて送ります。ジムは押さえましたか？'),
+                  : '<br>長さはご希望と同じです。日時か場所を変えたときは、確定連絡を「ご希望から変更」と書き添えて、メンション付きですぐ送ります。ジムは押さえましたか？'),
         extra, buttons: [{ label: isMove ? 'この内容に変更する' : 'この内容で承認する', value: 1 }] });
       if (!r) return;
       const ch = { date: r.vals.date, time: r.vals.time, gymId: r.vals.gymId };
