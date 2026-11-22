@@ -1061,6 +1061,11 @@ function apiNotifyApprovedBatch(adminToken, bookingIds) {
 /** まとめて確定したときの文面（1人分） */
 function batchApproveText_(c, list, gyms, notes) {
   notes = notes || {};
+  // 承認の時点でジムの予約メールが読めず住所が空のもの（例：upnow対応前に承認した1/21）は、送る直前にもう一度メールを探す（2026-11-22）
+  list.forEach(function (b) {
+    const g = gymById_(gyms, b['ジムID']);
+    if (!b['ジム住所'] && g && !isFixedGym_(g)) refreshPlace_(b, g);
+  });
   // 承認時に決めた実際のジム名・住所（予約シートの「ジム名」「ジム住所」）を使う。無い古い行は、場所が固定のジムだけ登録上の住所
   const gymOf = function (b) {
     const g = gymById_(gyms, b['ジムID']) || { id: b['ジムID'], name: b['ジムID'], address: '' };
@@ -1070,7 +1075,8 @@ function batchApproveText_(c, list, gyms, notes) {
   const same = list.every(function (b) { return gymOf(b).name === gymOf(list[0]).name && gymOf(b).address === gymOf(list[0]).address; });
   const lines = list.map(function (b) {
     const s = new Date(b['開始']), e = new Date(b['終了']);
-    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + mapLink_(gymOf(b).name, gymOf(b).address)) + (notes[b['予約ID']] ? '\n　' + notes[b['予約ID']] : '');
+    // 場所がばらばらのときは、各行の下に住所も書く（2026-11-22 さんぽん指摘：ジム名だけで中途半端）
+    return '・' + fmtDay_(s) + ' ' + fmtTime_(s) + '〜' + fmtTime_(e) + (same ? '' : '｜' + mapLink_(gymOf(b).name, gymOf(b).address) + (gymOf(b).address ? '\n　住所：' + gymOf(b).address : '')) + (notes[b['予約ID']] ? '\n　' + notes[b['予約ID']] : '');
   });
   const out = ['ご予約が確定しました（' + list.length + '件）。', ''].concat(lines);
   if (same) {
@@ -1887,6 +1893,16 @@ function retryCustomerSends_() {
  * お客さんへのメンション（'<@U…> '）。DMはメンション不要なので空。
  * 共有チャンネルは、メンバーから送信者（さんぽん）を除いた人をメンションする。結果は1日キャッシュ。取れなければ空
  */
+/** 予約シートの行のジム名・住所が空なら、ジムの予約メールから取り直して行にも書く */
+function refreshPlace_(b, g) {
+  try {
+    const gm = findGymMail_(new Date(b['開始']));
+    if (!gm || gm.canceled || !gm.name || !gm.address) return;
+    const nm = (/[【☆！!]|駅徒歩|完全個室/.test(gm.name) || gm.name.length > 24) ? g.name : gm.name;
+    b['ジム名'] = nm; b['ジム住所'] = gm.address;
+    if (b._row) updateCells_(SH.BOOKINGS, b._row, { 'ジム名': nm, 'ジム住所': gm.address });
+  } catch (e) { Logger.log('ジムの取り直しに失敗: ' + e); }
+}
 function mentionOf_(c) {
   if (!c.slack || /^D/.test(c.slack)) return '';
   const props = PropertiesService.getScriptProperties();
@@ -1917,7 +1933,8 @@ function sendCustomer_(c, text) {
       method: 'post',
       contentType: 'application/json; charset=utf-8',
       headers: { Authorization: 'Bearer ' + tok },
-      payload: JSON.stringify({ channel: c.slack, text: text.indexOf(':robot_face:') >= 0 ? text : text + SIGNATURE_ }),
+      // unfurl を止める：地図リンクごとに「Google Maps」のカードが付いて読みにくくなるため（2026-11-22）
+      payload: JSON.stringify({ channel: c.slack, text: text.indexOf(':robot_face:') >= 0 ? text : text + SIGNATURE_, unfurl_links: false, unfurl_media: false }),
       muteHttpExceptions: true
     });
     const j = JSON.parse(res.getContentText());
