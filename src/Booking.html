@@ -399,7 +399,7 @@
     h += '<div class="hello">' + esc(v.name) + 'さん、こんにちは</div>';
     // 期限がある人は「いつまでの分か」を添える（2026-11-24 さんぽん指示：4回が1月分までと分かるように）
     const untilShort = String(v.until || '').replace(/（.）$/, '');
-    h += '<div class="card"><div class="muted">' + (untilShort ? esc(untilShort) + 'までに予約できる回数' : '予約できる回数') + '</div>';
+    h += '<div class="card"><div class="muted">' + (untilShort ? esc(untilShort) + 'まで' : '予約できる回数') + '</div>';
     h += '<div class="count"><span class="num">' + v.bookable + '</span><span class="unit">回</span></div>';
     h += '<div class="muted">残り' + v.remaining + '回／承認待ち' + v.pending + '件</div></div>';
 
