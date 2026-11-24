@@ -34,6 +34,7 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .btn { border: 0; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--green); color: #fff; }
   .btn.sub { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  a.cname { font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; display: inline-block; padding: 4px 0; }
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
   .btn:disabled { opacity: .5; cursor: default; }
   a.btn { display: inline-block; text-decoration: none; }
@@ -331,7 +332,7 @@
 
   function renderCustomers() {
     const rows = data.customers.map((c) =>
-      '<tr><td><b>' + esc(c.name) + '</b>' + (c.active ? '' : ' <span class="muted">（無効）</span>') +
+      '<tr><td>' + (c.url ? '<a class="cname" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.name) + ' ↗</a>' : '<b>' + esc(c.name) + '</b>') + (c.active ? '' : ' <span class="muted">（無効）</span>') +
       '<div class="muted">' + esc(c.gyms || 'ジム未設定') + (c.hasSlack ? '' : '｜Slack未設定') + '</div></td>' +
       '<td class="n">' + esc(c.remaining) + '回<div class="muted" style="font-weight:400">承認待ち ' + esc(c.pending) + '</div></td>' +
       '<td><div class="actions" style="margin-top:0">' +

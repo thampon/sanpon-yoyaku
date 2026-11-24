@@ -853,7 +853,8 @@ function apiAdminView(adminToken) {
         const pend = bookings.filter(function (b) { return b['顧客ID'] === c.id && b['状態'] === STATUS.PENDING; }).length;
         return {
           id: c.id, name: c.name, remaining: c.remaining, pending: pend, active: c.active,
-          gyms: c.gymIds.map(gymName).join('、'), hasUrl: !!c.token, hasSlack: !!c.slack
+          gyms: c.gymIds.map(gymName).join('、'), hasUrl: !!c.token, hasSlack: !!c.slack,
+          url: c.token ? customerUrl_(c.token) : ''
         };
       }),
       warnings: warnings,
