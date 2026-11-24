@@ -424,10 +424,10 @@
     let h = '';
     h += '<div class="hello">' + esc(v.name) + 'さん、こんにちは</div>';
     // 期限がある人は「いつまでの分か」を添える（2026-11-24 さんぽん指示：4回が1月分までと分かるように）
-    h += '<div class="card"><div class="muted">今から予約できる回数</div>';
+    const untilShort = String(v.until || '').replace(/（.）$/, '');
+    h += '<div class="card"><div class="muted">' + (untilShort ? esc(untilShort) + 'までに予約できる回数' : '予約できる回数') + '</div>';
     h += '<div class="count"><span class="num">' + v.bookable + '</span><span class="unit">回</span></div>';
-    h += '<div class="muted">回数券の残り ' + v.remaining + '回／承認待ち ' + v.pending + '件</div>' +
-      (v.until ? '<div class="muted"><b>' + esc(v.until) + 'までのご予約分です</b></div>' : '') + '</div>';
+    h += '<div class="muted">残り' + v.remaining + '回／承認待ち' + v.pending + '件</div></div>';
 
     h += '<h2>予約状況</h2><div class="card bkl">';
     v.bookings = (v.bookings || []).filter((b) => b.status !== '済'); // 終わった回は出さない
@@ -474,7 +474,7 @@
     } else if (!v.gyms.length) {
       h += '<div class="note">ご利用できるジムが設定されていません。トレーナーにお問い合わせください。</div>';
     } else {
-      h += '<div class="muted" style="margin-bottom:8px">日時を選んでください。場所はそのあとに選べます（' + v.leadDays + '日後以降' + (v.until ? '、' + esc(v.until) + 'まで' : '') + 'の枠から選べます）' + (v.sessionMin > 60 ? '<br>1回' + (v.sessionMin % 60 ? v.sessionMin + '分' : (v.sessionMin / 60) + '時間') + 'のセッションです。' : '') + '</div>';
+      h += '<div class="muted" style="margin-bottom:8px">日時を選んでください（' + v.leadDays + (v.until ? '日後〜' + esc(String(v.until).replace(/（.）$/, '')) : '日後以降') + '）' + (v.sessionMin > 60 ? '<br>1回' + (v.sessionMin % 60 ? v.sessionMin + '分' : (v.sessionMin / 60) + '時間') + 'のセッションです。' : '') + '</div>';
       h += '<div id="slots"></div>';
     }
     h += '<div class="trainer"><img src="trainer.jpg" alt="トレーナー さんぽん" width="64" height="64" loading="lazy">' +
