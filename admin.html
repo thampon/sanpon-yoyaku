@@ -34,7 +34,19 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .btn { border: 0; border-radius: 8px; padding: 9px 14px; font-size: 14px; font-weight: 700; cursor: pointer; background: var(--green); color: #fff; }
   .btn.sub { background: #fff; color: var(--ink); border: 1px solid var(--line); }
-  a.cname { font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; display: inline-block; padding: 4px 0; }
+  .clist { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .crow { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .crow:last-child { border-bottom: 0; }
+  .cmain { flex: 1; min-width: 0; }
+  .ctop { display: flex; align-items: baseline; gap: 8px; }
+  .ctop .cname, .ctop b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cnum { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cgym { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cbtn { display: flex; gap: 6px; flex-shrink: 0; }
+  .cbtn .btn { padding: 8px 10px; font-size: 13px; min-height: 40px; }
+  .cbtn .btn[data-act="url"] { min-width: 88px; }
+  .cpend { color: var(--ink); }
+  a.cname { font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; display: inline-block; padding: 2px 0; }
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
   .btn:disabled { opacity: .5; cursor: default; }
   a.btn { display: inline-block; text-decoration: none; }
@@ -332,15 +344,17 @@
 
   function renderCustomers() {
     const rows = data.customers.map((c) =>
-      '<tr><td>' + (c.url ? '<a class="cname" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.name) + ' ↗</a>' : '<b>' + esc(c.name) + '</b>') + (c.active ? '' : ' <span class="muted">（無効）</span>') +
-      '<div class="muted">' + esc(c.gyms || 'ジム未設定') + (c.hasSlack ? '' : '｜Slack未設定') + '</div></td>' +
-      '<td class="n">' + esc(c.remaining) + '回<div class="muted" style="font-weight:400">承認待ち ' + esc(c.pending) + '</div></td>' +
-      '<td><div class="actions" style="margin-top:0">' +
-      '<button class="btn sub" data-act="tickets" data-id="' + esc(c.id) + '">回数を追加</button>' +
-      '<button class="btn sub" data-act="url" data-id="' + esc(c.id) + '">' + (c.hasUrl ? 'URL再発行' : 'URL発行') + '</button>' +
-      '</div></td></tr>').join('');
+      '<div class="crow">' +
+      '<div class="cmain"><div class="ctop">' +
+      (c.url ? '<a class="cname" href="' + esc(c.url) + '" target="_blank" rel="noopener">' + esc(c.name) + ' ↗</a>' : '<b>' + esc(c.name) + '</b>') +
+      '<span class="cnum">残' + esc(c.remaining) + '回</span></div>' +
+      '<div class="muted cgym">' + (c.active ? '' : '<b>無効</b>｜') + (Number(c.pending) ? '<b class="cpend">承認待ち' + esc(c.pending) + '</b>｜' : '') +
+      esc(c.gyms || 'ジム未設定') + (c.hasSlack ? '' : '｜Slack未設定') + '</div></div>' +
+      '<div class="cbtn"><button class="btn sub" data-act="tickets" data-id="' + esc(c.id) + '">＋回数</button>' +
+      '<button class="btn sub" data-act="url" data-id="' + esc(c.id) + '">' + (c.hasUrl ? 'URL再発行' : 'URL発行') + '</button></div>' +
+      '</div>').join('');
     $('content').innerHTML = data.customers.length
-      ? '<table><thead><tr><th>顧客</th><th>残回数</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      ? '<div class="clist">' + rows + '</div>' +
         '<p class="muted">顧客の追加・利用ジム・SlackチャンネルIDの変更は、スプレッドシートの「顧客」シートで行います。</p>'
       : '<div class="empty">「顧客」シートに顧客を登録してください。</div>';
   }
