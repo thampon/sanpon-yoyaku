@@ -56,7 +56,7 @@ const TARGETS = [
     src: 'src/Booking.html', out: 'index.html',
     head: [
       '<meta name="robots" content="noindex">',
-      '<title>ご予約｜さんぽんパーソナル</title>',
+      '<title>ご予約｜Sunpeace</title>',
       "<script>if (new URLSearchParams(location.search).get('admin')) location.replace('admin.html' + location.search);</script>"
     ],
     token: ['  const TOKEN = <?!= JSON.stringify(token) ?>;', "  const TOKEN = new URLSearchParams(location.search).get('t') || '';"]
