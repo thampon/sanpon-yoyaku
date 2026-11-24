@@ -345,7 +345,7 @@
     if (!rows.length && fcRows.length) { // 予測の月：会員一覧から出した見込み（料金表の予測の合計と違えば差額を出す）
       var fsum = fcRows.reduce(function (s2, x) { return s2 + x.amount; }, 0), diff = typeof totals[revMonth] === 'number' ? totals[revMonth] - fsum : 0;
       h += '<ul class="list tight">' + fcRows.map(function (x) { return '<li><span>' + esc(x.name) + '</span><span class="amt">' + esc(yen(x.amount)) + '</span></li>'; }).join('') +
-        (diff ? '<li><span>その他（差額）</span><span class="amt">' + esc(yen(diff)) + '</span></li>' : '') + '</ul>' +
+        (diff ? '<li><span>新規の見込みなど</span><span class="amt">' + esc(yen(diff)) + '</span></li>' : '') + '</ul>' +
         '<div class="total"><span>合計（予測）</span><span>' + esc(yen(typeof totals[revMonth] === 'number' ? totals[revMonth] : fsum)) + '</span></div>';
     }
     else if (!rows.length && kinds[revMonth] === '予測') h += '<div class="note">この月はまだ締まっていないので、料金表には見込みの合計だけがあります：<b>' + esc(yen(totals[revMonth])) + '</b>（予測）。お客さんごとの内訳は、経理部の月の締めのあとに出ます。</div>';
