@@ -425,9 +425,10 @@
     h += '<div class="hello">' + esc(v.name) + 'さん、こんにちは</div>';
     // 期限がある人は「いつまでの分か」を添える（2026-11-24 さんぽん指示：4回が1月分までと分かるように）
     const untilShort = String(v.until || '').replace(/（.）$/, '');
-    h += '<div class="card"><div class="muted">' + (untilShort ? esc(untilShort) + 'まで' : '予約できる回数') + '</div>';
+    h += '<div class="card"><div class="muted">' + '残り回数' + (untilShort ? '（' + esc(untilShort) + 'まで）' : '') + '</div>';
     h += '<div class="count"><span class="num">' + v.bookable + '</span><span class="unit">回</span></div>';
-    h += '<div class="muted">残り' + v.remaining + '回／承認待ち' + v.pending + '件</div></div>';
+    // 承認待ちがあるときだけ、その分を引いていることを書く（「残り」と「予約できる」の2つの数字で迷わせない）
+    h += (v.pending ? '<div class="muted">承認待ち' + v.pending + '件の分を引いています</div>' : '') + '</div>';
 
     h += '<h2>予約状況</h2><div class="card bkl">';
     v.bookings = (v.bookings || []).filter((b) => b.status !== '済'); // 終わった回は出さない
