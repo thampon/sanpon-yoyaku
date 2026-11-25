@@ -176,7 +176,7 @@
     h += '</section>';
 
     // 推移グラフ
-    h += '<section class="card"><div class="label">月ごとの売上（1年間）</div><div class="chart" id="chart">' + chartSvg(d.trend || []) + '<div class="tip" id="tip"></div></div>' +
+    h += '<section class="card"><div class="label">月ごとの売上（翌月まで）</div><div class="chart" id="chart">' + chartSvg(d.trend || [], d.current) + '<div class="tip" id="tip"></div></div>' +
       '</section>';
 
     // 会員
