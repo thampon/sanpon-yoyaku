@@ -44,7 +44,7 @@
   .cgym { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cbtn { display: flex; gap: 6px; flex-shrink: 0; }
   .cbtn .btn { padding: 8px 10px; font-size: 13px; min-height: 40px; }
-  .cbtn .btn[data-act="url"] { min-width: 88px; }
+  .cbtn .btn[data-act="url"], .cbtn .btn[data-act="copy"] { min-width: 96px; }
   .cpend { color: var(--ink); }
   a.cname { font-weight: 700; color: var(--green); text-decoration: underline; text-underline-offset: 3px; display: inline-block; padding: 2px 0; }
   .btn.danger { background: #fff; color: var(--warn); border: 1px solid #efc6b4; }
@@ -351,7 +351,8 @@
       '<div class="muted cgym">' + (c.active ? '' : '<b>無効</b>｜') + (Number(c.pending) ? '<b class="cpend">承認待ち' + esc(c.pending) + '</b>｜' : '') +
       esc(c.gyms || 'ジム未設定') + (c.hasSlack ? '' : '｜Slack未設定') + '</div></div>' +
       '<div class="cbtn"><button class="btn sub" data-act="tickets" data-id="' + esc(c.id) + '">＋回数</button>' +
-      '<button class="btn sub" data-act="url" data-id="' + esc(c.id) + '">' + (c.hasUrl ? 'URL再発行' : 'URL発行') + '</button></div>' +
+      (c.url ? '<button class="btn sub" data-act="copy" data-id="' + esc(c.id) + '">URLコピー</button>'
+        : '<button class="btn sub" data-act="url" data-id="' + esc(c.id) + '">URL発行</button>') + '</div>' +
       '</div>').join('');
     $('content').innerHTML = data.customers.length
       ? '<div class="clist">' + rows + '</div>' +
@@ -454,6 +455,10 @@
         if (!n || Math.floor(n) !== n) { toast('⚠ 0以外の整数を入力してください'); return; }
         run('apiAddTickets', id, n, n > 0 ? '付与' : '補正');
       }
+    } else if (act === 'copy') {
+      const c = find(data.customers, id);
+      try { await navigator.clipboard.writeText(c.url); toast(c.name + 'さんのURLをコピーしました'); }
+      catch (e) { await ask({ title: c.name + 'さんの予約URL', body: '長押し（右クリック）でコピーしてください。', input: { value: c.url, readonly: true }, buttons: [] }); }
     } else if (act === 'url') {
       const c = find(data.customers, id);
       const r = await ask({ title: c.name + 'さんの予約URLを' + (c.hasUrl ? '再発行' : '発行'),
