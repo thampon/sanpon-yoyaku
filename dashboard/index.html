@@ -147,7 +147,7 @@
     h += '<div class="foot"><button class="linkbtn" id="logout" type="button">ログアウト</button></div>';
     main.innerHTML = h;
     document.getElementById('logout').addEventListener('click', logout);
-    if (tab === 'sum') bindChart(d, 'chart', 'tip', function (i) { var t = d.trend[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得'); });
+    if (tab === 'sum') bindChart(d, 'chart', 'tip', function (i) { var t = d.trend[i]; return Number(t.month.slice(5, 7)) + '月：' + (typeof t.value === 'number' ? yen(t.value) + (t.state === '予測' ? '（予測）' : t.state === '請求' ? '（請求ベース' + (typeof t.plan === 'number' ? '・料金表の見込み ' + yen(t.plan) : '') + '）' : t.state === '要確認' ? '（概算あり）' : '') : '未取得'); });
     if (tab === 'rev') bindChart(d, 'pchart', 'ptip', function (i) {
       var x = (d.grossTrend || [])[i]; if (typeof x.gross !== 'number') return Number(x.month.slice(5, 7)) + '月：未取得';
       return Number(x.month.slice(5, 7)) + '月' + (x.state === '予測' ? '（予測）' : '') + '：売上 ' + (yen(x.sales) || '未取得') + '・原価 ' + (yen(x.cost) || '未取得') + '・粗利 ' + yen(x.gross) +
@@ -217,7 +217,7 @@
   function chartSvg(trend, cur, title) {
     var W = 340, H = 170, L = 8, R = 8, T = 22, B = 26;
     var vals = trend.map(function (t) { return typeof t.value === 'number' ? t.value : null; });
-    var fc = trend.map(function (t) { return t.state === '予測'; });
+    var fc = trend.map(function (t) { return t.state === '予測' || t.state === '請求'; });
     var max = Math.max.apply(null, vals.filter(function (v) { return v !== null; }).concat([1]));
     var step = Math.pow(10, Math.floor(Math.log(max) / Math.LN10)); var top = Math.ceil(max / step) * step; if (top / step < 3) top = Math.ceil(max / (step / 2)) * (step / 2);
     var n = trend.length || 1, slot = (W - L - R) / n, bw = Math.min(28, slot - 10);
