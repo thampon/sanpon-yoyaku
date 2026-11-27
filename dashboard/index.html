@@ -499,6 +499,7 @@
         }
         h += '</div>';
       });
+      if (c.targetsUpdated) upd = c.targetsUpdated; // 「削減実績」の更新日の列の最新の日付
       h += '<div class="note">今月の経過 ' + pace + '%' + (upd ? '・' + esc(upd.slice(5).replace('-', '/')) + ' 時点' : '') + '</div>';
     }
     h += '</section>';
