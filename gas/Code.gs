@@ -2102,15 +2102,32 @@ function sendTomorrowReminders() {
   const flag = 'REMIND_SENT_' + r.key;
   if (props.getProperty(flag)) { Logger.log('送信済み：' + r.key); return; }
   props.setProperty(flag, new Date().toISOString());
-  if (!r.total) { notifyTrainer_('明日（' + r.day + '）のPTはありません（送信なし）'); return; }
-  const ok = [], ng = r.skipped.slice();
+  if (!r.total) { reportBoard_('お知らせ', '明日（' + r.day + '）のPTはありません（送信なし）'); return; }
+  const ok = [], ng = r.skipped.slice(), failed = [];
   r.sends.forEach(function (x) {
     const res = sendCustomer_(x.c, x.text);
-    if (res.ok) ok.push(x.summary); else ng.push(x.c.name + 'さん：送信失敗（' + res.error + '）。手動で連絡してください');
+    if (res.ok) ok.push(x.summary); else failed.push(x.c.name + 'さん：送信失敗（' + res.error + '）。手動で連絡してください');
   });
-  notifyTrainer_(':bell: 明日（' + r.day + '）のセッション案内' +
-    (ok.length ? '\n送った：\n・' + ok.join('\n・') : '\n送った：なし') +
-    (ng.length ? '\n送っていない：\n・' + ng.join('\n・') : ''));
+  const body = '【明日（' + r.day + '）のセッション案内】' +
+    '\n送った：' + (ok.length ? '\n・' + ok.join('\n・') : 'なし') +
+    (ng.concat(failed).length ? '\n送っていない：\n・' + ng.concat(failed).join('\n・') : '');
+  reportBoard_(ng.length || failed.length ? '要対応' : 'お知らせ', body);
+  // お客さまへの送信が失敗したときだけは、社長のSlackにも送る（全社共通ルール10.の例外）
+  if (failed.length) notifyTrainer_(':warning: ' + body);
+}
+/**
+ * 社長への報告は「Sunpeace_報告ボード」の「報告」シートに1行追加する（2026-11-26 社長決定）。夜のまとめ便がこの行を読んで届ける。
+ * 書けなかったときだけトレーナー宛てSlackに送る。
+ */
+const REPORT_BOARD_ID_ = '1ndj78jblDe3wsiy2g2xC4oVlXT_c4fvVZsrNz6dmeQs';
+function reportBoard_(kind, text) {
+  try {
+    const sh = SpreadsheetApp.openById(REPORT_BOARD_ID_).getSheetByName('報告');
+    sh.appendRow([Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd H:mm'), 'カスタマーサクセス部', '翌日セッションのリマインド（毎晩20時）', kind, text, '', '', '']);
+  } catch (e) {
+    Logger.log('報告ボードに書けませんでした: ' + e);
+    notifyTrainer_(text + '\n（報告ボードに書けなかったためSlackで送りました）');
+  }
 }
 /** テスト用：明日の案内を、お客さまではなくテスト顧客（C001＝さんぽん自身のDM）に送る */
 function testTomorrowReminders() {
@@ -2118,6 +2135,7 @@ function testTomorrowReminders() {
   const test = readRows_(SH.CUSTOMERS).map(toCustomer_).filter(function (c) { return c.id === 'C001'; })[0];
   r.sends.forEach(function (x) { sendCustomer_(test, '【テスト：' + x.c.name + 'さん宛て】\n' + x.text); });
   Logger.log(JSON.stringify({ day: r.day, sends: r.sends.map(function (x) { return x.summary; }), skipped: r.skipped }));
+  Logger.log('報告ボード（書き込みはしない）：' + SpreadsheetApp.openById(REPORT_BOARD_ID_).getSheetByName('報告').getLastRow() + '行');
   return r.sends.length + '件をテスト送信（送らない：' + r.skipped.length + '件）';
 }
 /** 毎晩20時のトリガーを作る（エディタから1回だけ実行） */
