@@ -1958,6 +1958,7 @@ function queueNotify_(text) {
 function flushNotifyQueue() {
   try { retryCustomerSends_(); } catch (e) { Logger.log('再送処理に失敗: ' + e); }
   try { sendOrphanBatches_(); } catch (e) { Logger.log('まとめ連絡の自動送信に失敗: ' + e); }
+  try { processSlackOutbox_(); } catch (e) { Logger.log('Slack送信キューの処理に失敗: ' + e); }
   flushTrainerQueue_();
 }
 function flushTrainerQueue_() {
@@ -2138,6 +2139,80 @@ function testTomorrowReminders() {
   Logger.log('報告ボード（書き込みはしない）：' + SpreadsheetApp.openById(REPORT_BOARD_ID_).getSheetByName('報告').getLastRow() + '行');
   return r.sends.length + '件をテスト送信（送らない：' + r.skipped.length + '件）';
 }
+// ===== 経理部などの定例タスクからのSlack送信（送信キュー）=====
+// 2026-11-28 社長指示：Claude経由で送るとSlackが「使用して送信されました Claude」を付けるため、
+// 入金のお礼・入金リマインド・請求書の送信は、定例タスクが「請求ログ」の「Slack送信」シートに1行書き、
+// 予約システムが毎分の処理（flushNotifyQueue）で「さんぽん予約」アプリから送る。
+// 列：A 依頼日時／B 依頼元（タスク名）／C 送り先SlackのID／D 本文（**太字** と [文字](URL) はSlackの書式に直す）
+//     ／E 送れたら書き込むセル（例「K12=送信済;M12={日時}」「Q12+=3日前 送信済 {日時}」。請求ログの1枚目）
+//     ／F 状態（空 or 送信待ち → 送信中 → 済／失敗）／G 処理日時／H エラー
+const OUTBOX_BOOK_ID_ = '1rXugjy3HFjwKdTQw_5ACCQQr4Tjn_mDjZUY8bkRbB9g'; // 請求ログ
+const OUTBOX_SHEET_ = 'Slack送信';
+const BILLING_MASTER_ID_ = '1RjtQxqz_i2RIUqI58OTDp2M4vWEC1Yj_GlPFCeeo5Kg';
+/** Slackコネクタ用の書き方（Markdown）を、Slack APIの書式に直す */
+function toSlackMrkdwn_(t) {
+  return String(t || '')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, function (m, a, u) { return '<' + u + '|' + a.replace(/[<>|]/g, ' ') + '>'; })
+    .replace(/\*\*([^*\n]+)\*\*/g, '*$1*');
+}
+/** 送ってよい送り先（顧客シートの有効なお客さま＋請求マスタの送り先）。それ以外には送らない */
+function outboxAllowed_() {
+  const ok = {};
+  readRows_(SH.CUSTOMERS).forEach(function (r) { if (r['SlackチャンネルID'] && isTrue_(r['有効'])) ok[String(r['SlackチャンネルID']).trim()] = true; });
+  try {
+    const v = SpreadsheetApp.openById(BILLING_MASTER_ID_).getSheets()[0].getDataRange().getValues();
+    const col = v[0].indexOf('送り先SlackのID');
+    for (let i = 1; i < v.length; i++) if (col >= 0 && v[i][col]) ok[String(v[i][col]).trim()] = true;
+  } catch (e) { Logger.log('請求マスタが読めません: ' + e); }
+  return ok;
+}
+function applyOutboxCallback_(spec, stamp) {
+  if (!spec) return;
+  const sh = SpreadsheetApp.openById(OUTBOX_BOOK_ID_).getSheets()[0];
+  String(spec).split(';').forEach(function (part) {
+    const m = part.trim().match(/^([A-Z]{1,2}\d{1,5})\s*(\+?=)\s*([\s\S]*)$/);
+    if (!m) return;
+    const val = m[3].replace(/\{日時\}/g, stamp);
+    const cell = sh.getRange(m[1]);
+    if (m[2] === '+=') { const cur = String(cell.getValue() || '').trim(); cell.setValue(cur ? cur + '／' + val : val); }
+    else cell.setValue(val);
+  });
+}
+function processSlackOutbox_() {
+  let sh;
+  try { sh = SpreadsheetApp.openById(OUTBOX_BOOK_ID_).getSheetByName(OUTBOX_SHEET_); } catch (e) { return; }
+  if (!sh || sh.getLastRow() < 2) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return;
+  let jobs = [];
+  try {
+    const v = sh.getRange(2, 1, sh.getLastRow() - 1, 8).getValues();
+    v.forEach(function (r, i) {
+      const st = String(r[5] || '').trim();
+      if ((st === '' || st === '送信待ち') && r[2] && r[3]) jobs.push({ row: i + 2, from: r[1], to: String(r[2]).trim(), text: r[3], cb: r[4] });
+    });
+    jobs.forEach(function (j) { sh.getRange(j.row, 6).setValue('送信中'); });
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
+  if (!jobs.length) return;
+  const allowed = outboxAllowed_();
+  jobs.forEach(function (j) {
+    const stamp = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm');
+    let res;
+    if (!allowed[j.to]) res = { ok: false, error: '送り先がお客さま一覧・請求マスタにありません' };
+    else res = sendCustomer_({ slack: j.to, name: j.to }, toSlackMrkdwn_(j.text));
+    if (res.ok) {
+      let cbErr = '';
+      try { applyOutboxCallback_(j.cb, stamp); } catch (e) { cbErr = '送信済みだが記録の書き込みに失敗：' + e; }
+      sh.getRange(j.row, 6, 1, 3).setValues([['済', stamp, cbErr]]);
+      if (cbErr) notifyTrainer_(':warning: Slack送信（' + j.from + '）は送れましたが、請求ログへの記録に失敗しました：' + cbErr);
+    } else {
+      sh.getRange(j.row, 6, 1, 3).setValues([['失敗', stamp, res.error]]);
+      notifyTrainer_(':warning: お客さまへのSlack送信に失敗しました（' + j.from + '／送り先 ' + j.to + '）：' + res.error + '\n請求ログの「Slack送信」シート ' + j.row + '行目。直したら状態を空にすると再送します。');
+    }
+  });
+}
+
 /** 毎晩20時のトリガーを作る（エディタから1回だけ実行） */
 function setupReminderTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'sendTomorrowReminders') ScriptApp.deleteTrigger(t); });
