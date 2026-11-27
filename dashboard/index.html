@@ -561,7 +561,7 @@
     else if (!as.length) h += '<span class="na">未取得</span>';
     else {
       var last = as[as.length - 1], goal = c.assetGoal, gp = goal && typeof last.total === 'number' ? Math.min(100, Math.round(last.total / goal * 100)) : 0;
-      h += '<div class="label">' + esc(last.month.slice(0, 4)) + '年' + monthJa(last.month) + '末の資産総額</div><div class="big">' + cell(last.total) + '</div>' +
+      h += '<div class="label">' + (last.updated && last.month === d.current ? esc(Number(last.updated.slice(5, 7)) + '/' + Number(last.updated.slice(8, 10))) + ' 時点の資産総額' : esc(last.month.slice(0, 4)) + '年' + monthJa(last.month) + '末の資産総額') + '</div><div class="big">' + cell(last.total) + '</div>' +
         (last.monthsList && last.monthsList.length ? '<div class="note">暮らせる月数：' + last.monthsList.map(function (x) { return (x.name ? esc(x.name) + ' ' : '') + '<b>' + x.value.toFixed(1) + 'か月</b>'; }).join('／') + '</div>'
           : typeof last.months === 'number' ? '<div class="note">暮らせる月数：<b>' + last.months.toFixed(1) + 'か月</b></div>' : '');
       if (goal) h += '<div class="goal"><div class="row"><div class="col">目標 ' + esc(yen(goal)) + '</div><div><b>' + (typeof last.total === 'number' ? (last.total >= goal ? '達成' : 'あと' + esc(yen(goal - last.total))) : '') + '</b></div></div><div class="bar" role="img" aria-label="' + gp + '%"><span style="width:' + gp + '%"></span></div></div>';
