@@ -2016,6 +2016,117 @@ function notifyTrainer_(text) {
   } catch (e) { Logger.log('Slack通知失敗: ' + e); }
 }
 
+// ===== 翌日セッションの前日案内（毎晩20時）=====
+// 2026-11-28 社長指示：これまでスケジュールタスク（Claude経由）で送っていたものを予約システムから送る。
+// Claude経由だとSlackが「使用して送信されました Claude」を付けるため。文面・対象・送り先は従来のタスクと同じ。
+/** 予定の場所欄からジム名・住所を取り出す。実際のジム名が無い（登録上の地名だけ等）ときは null */
+function parseEventPlace_(loc, gyms) {
+  loc = String(loc || '').replace(/\s+$/, '').trim();
+  if (!loc) return null;
+  let name = '', addr = '';
+  const m = loc.match(/^(.*?)[（(]([^（）()]+)[）)]$/);
+  if (m) { name = m[2].trim(); addr = m[1].trim(); }
+  else {
+    const parts = loc.split(/　+|\s{2,}/);
+    if (parts.length < 2) return null;
+    name = parts[0].trim(); addr = parts.slice(1).join(' ').trim();
+  }
+  addr = addr.replace(/〒\s*\d{3}-?\d{4}\s*/, '').trim();
+  return { name: name, addr: addr };
+}
+function isRealPlace_(p, gyms) {
+  if (!p || !p.name || !p.addr || !/\d/.test(p.addr) || /付近/.test(p.name + p.addr)) return false;
+  const generic = gyms.filter(function (g) { return !g.checkCal && !g.entry; }).map(function (g) { return String(g.name).replace(/\s/g, ''); });
+  const n = p.name.replace(/\s/g, '');
+  return n.indexOf('その他') !== 0 && generic.indexOf(n) < 0;
+}
+function isPtEvent_(ev) {
+  const t = ev.getTitle();
+  return !ev.isAllDayEvent() && t.indexOf('PT') >= 0 && !/キャンセル|中止/.test(t) && t.indexOf(PENDING_PREFIX) !== 0 && t.indexOf('【仮】') !== 0;
+}
+/** 予定名からお客さんを探す（氏名の空白を除いたもの、またはカレンダー表記）。一番長く一致した人 */
+function customerOfTitle_(title, all) {
+  const t = String(title).replace(/\s/g, '').replace(/\[[^\]]*\]/g, '');
+  let best = null, len = 0;
+  all.forEach(function (c) {
+    const n = String(c.name || '').replace(/\s/g, '');
+    const cal = String(c.calName || '').replace(/\s/g, '');
+    [n, cal].forEach(function (k) { if (k && t.indexOf(k) >= 0 && k.length > len) { best = c; len = k.length; } });
+  });
+  return best;
+}
+/** 明日の案内を組み立てる（送らない） */
+function buildTomorrowReminders_(now) {
+  const st = getSettings_();
+  const cal = getCal_(st);
+  const gyms = getGyms_();
+  const all = readRows_(SH.CUSTOMERS).filter(function (r) { return r['顧客ID']; }).map(toCustomer_);
+  const today = Utilities.formatDate(now || new Date(), TZ, 'yyyy-MM-dd');
+  const start = new Date(new Date(today + 'T00:00:00+09:00').getTime() + 86400000);
+  const end = new Date(start.getTime() + 86400000);
+  const evs = cal.getEvents(start, end).filter(isPtEvent_).sort(function (a, b) { return a.getStartTime() - b.getStartTime(); });
+  const past = cal.getEvents(new Date(start.getTime() - 60 * 86400000), start).filter(isPtEvent_);
+  const per = {}, skipped = [];
+  evs.forEach(function (ev) {
+    const when = fmtDay_(ev.getStartTime()) + ' ' + fmtTime_(ev.getStartTime()) + '〜' + fmtTime_(ev.getEndTime());
+    const c = customerOfTitle_(ev.getTitle(), all);
+    if (!c) { skipped.push(ev.getTitle() + ' ' + when + '：お客さまが特定できない'); return; }
+    if (c.id === 'C001') return;
+    if (!c.active) { skipped.push(ev.getTitle() + ' ' + when + '：' + c.name + 'さんは無効（解約済み）'); return; }
+    if (!c.slack) { skipped.push(c.name + 'さん ' + when + '：SlackチャンネルID未設定'); return; }
+    const pl = parseEventPlace_(ev.getLocation(), gyms);
+    if (!isRealPlace_(pl, gyms)) { skipped.push(c.name + 'さん ' + when + '：場所未確定のため未送信'); return; }
+    let note = '';
+    const prev = past.filter(function (p) { const pc = customerOfTitle_(p.getTitle(), all); return pc && pc.id === c.id; })
+      .sort(function (a, b) { return b.getStartTime() - a.getStartTime(); })[0];
+    if (prev) {
+      const pp = parseEventPlace_(prev.getLocation(), gyms);
+      if (pp && pp.name && pp.name.replace(/\s/g, '') !== pl.name.replace(/\s/g, '')) {
+        note = '※前回（' + Utilities.formatDate(prev.getStartTime(), TZ, 'M/d') + '）の' + pp.name + 'とは場所が異なりますので、ご注意ください。';
+      }
+    }
+    (per[c.id] = per[c.id] || { c: c, blocks: [], summary: [] });
+    per[c.id].blocks.push('日時：' + when + '\n場所：' + mapLink_(pl.name, pl.addr) + '\n住所：' + pl.addr + (note ? '\n\n' + note : ''));
+    per[c.id].summary.push(fmtTime_(ev.getStartTime()) + ' ' + pl.name + (note ? '（前回と場所が違う旨を添えた）' : ''));
+  });
+  const sends = Object.keys(per).map(function (k) {
+    const x = per[k];
+    return { c: x.c, text: ':loudspeaker: *明日のセッションのご案内*\n\n' + x.blocks.join('\n\n') + SIGNATURE_, summary: x.c.name + 'さん ' + x.summary.join('、') };
+  });
+  return { day: fmtDay_(start), key: Utilities.formatDate(start, TZ, 'yyyyMMdd'), sends: sends, skipped: skipped, total: evs.length };
+}
+/** 毎晩20時（トリガー）：明日のPTのお客さまに日時・場所を送り、結果をトレーナーに1通で知らせる */
+function sendTomorrowReminders() {
+  const r = buildTomorrowReminders_();
+  const props = PropertiesService.getScriptProperties();
+  const flag = 'REMIND_SENT_' + r.key;
+  if (props.getProperty(flag)) { Logger.log('送信済み：' + r.key); return; }
+  props.setProperty(flag, new Date().toISOString());
+  if (!r.total) { notifyTrainer_('明日（' + r.day + '）のPTはありません（送信なし）'); return; }
+  const ok = [], ng = r.skipped.slice();
+  r.sends.forEach(function (x) {
+    const res = sendCustomer_(x.c, x.text);
+    if (res.ok) ok.push(x.summary); else ng.push(x.c.name + 'さん：送信失敗（' + res.error + '）。手動で連絡してください');
+  });
+  notifyTrainer_(':bell: 明日（' + r.day + '）のセッション案内' +
+    (ok.length ? '\n送った：\n・' + ok.join('\n・') : '\n送った：なし') +
+    (ng.length ? '\n送っていない：\n・' + ng.join('\n・') : ''));
+}
+/** テスト用：明日の案内を、お客さまではなくテスト顧客（C001＝さんぽん自身のDM）に送る */
+function testTomorrowReminders() {
+  const r = buildTomorrowReminders_();
+  const test = readRows_(SH.CUSTOMERS).map(toCustomer_).filter(function (c) { return c.id === 'C001'; })[0];
+  r.sends.forEach(function (x) { sendCustomer_(test, '【テスト：' + x.c.name + 'さん宛て】\n' + x.text); });
+  Logger.log(JSON.stringify({ day: r.day, sends: r.sends.map(function (x) { return x.summary; }), skipped: r.skipped }));
+  return r.sends.length + '件をテスト送信（送らない：' + r.skipped.length + '件）';
+}
+/** 毎晩20時のトリガーを作る（エディタから1回だけ実行） */
+function setupReminderTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'sendTomorrowReminders') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('sendTomorrowReminders').timeBased().everyDays(1).atHour(20).nearMinute(0).inTimezone(TZ).create();
+  return '毎晩20時のトリガーを作成しました';
+}
+
 function sentNote_(sent) {
   if (sent.ok) return 'お客さんにSlackで連絡しました。';
   return '※お客さんへのSlack連絡は失敗しました（' + sent.error + '）。' +
